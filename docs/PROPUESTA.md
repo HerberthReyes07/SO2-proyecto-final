@@ -62,6 +62,39 @@ llegadaB + nivelB·T`. Así el envejecimiento es una clave fija por pedido.
 **Benchmark (paso 8):** mismo generador con semilla fija, reloj acelerado, una corrida por política. Métricas:
 espera promedio por nivel, % que cumple su objetivo, espera máxima, throughput y utilización de recursos.
 
+### Generador automático de pedidos
+
+Se separa **qué** llega de **cuándo** llega:
+
+- `WorkloadGenerator` decide, de forma **determinista a partir de una semilla**, qué pedido llega (nivel según la
+  mezcla 5/15/35/25/20 %, cliente de ese nivel, 1–3 productos distintos, cantidades 1 + exponencial con tope 30) y
+  cuánto "trabajo" falta hasta la próxima llegada. No sabe de hilos ni de relojes, así que el benchmark (paso 8)
+  puede correr cada política con exactamente la misma carga.
+- `OrderGenerator` (un hilo) decide el momento. Las llegadas son un proceso de **Poisson**: el tiempo entre pedidos
+  es exponencial. Para que un cambio de intensidad se note de inmediato (con intensidad baja el intervalo ya
+  sorteado puede ser de horas simuladas) la espera se hace en tajadas de 10 s simulados, cada una consume del
+  trabajo sorteado a la intensidad vigente (*time-rescaling* de un proceso de Poisson no homogéneo).
+- Espera con `SimClock.sleep`, así que respeta la pausa y la velocidad. Mientras está deshabilitado duerme en una
+  `Condition`; la configuración se protege con un `ReentrantLock`.
+- Intensidad en pedidos por minuto simulado, entre 0,05 y 20. Medido con las duraciones y la mezcla por defecto,
+  el sistema despacha unos 2 pedidos/min como máximo (lo limitan los 10 encargados): "Alta" (1,5) queda cerca del
+  límite y "Saturación" (3) lo supera, de modo que la lista de espera crece.
+- Las semillas por defecto son pequeñas porque JavaScript solo representa sin pérdida enteros hasta 2^53.
+
+### Estadísticas
+
+- Cada pedido despachado produce un `CompletedOrder` (espera en la lista, tiempo en proceso, nivel). Se entrega a
+  `SimulationStatistics` mediante un *listener* del procesador, así `processing` no depende de `stats`.
+- **Espera** = desde que llega hasta que se le asigna encargado. **Proceso** = desde que se le asigna encargado hasta
+  que termina (incluye esperas por recursos). Un pedido está **a tiempo** si su espera es ≤ el objetivo de su nivel.
+- Por nivel: despachados, espera promedio y máxima (la máxima revela inanición), proceso promedio y % a tiempo;
+  además totales y rendimiento (pedidos por minuto simulado).
+- Un `ReentrantLock` protege los contadores juntos para que un snapshot nunca vea, por ejemplo, la cantidad ya
+  incrementada pero la suma todavía sin actualizar.
+- **Ocupación de recursos:** cada `ResourcePool` integra "unidades ocupadas × tiempo" en cada concesión y liberación
+  (exacto, no por muestreo) y lo mide con el reloj simulado, de modo que una pausa no cuenta como tiempo ocioso.
+  "Reiniciar estadísticas" reinicia los contadores y la ocupación a la vez.
+
 ## 4. Tipos de mercancía y flujo de un pedido
 
 Todo pedido recorre cuatro **etapas** en orden: picking → inspección → empaque → despacho. Cada recurso pertenece
@@ -160,7 +193,7 @@ Dos camiones ocupan las 2 áreas de carga y un despacho sostiene el escáner.
 | Operación de pedido | ≤ 10 en proceso (uno por encargado) | `ResourcePool` (`ReentrantLock` + `Condition`) |
 | Operación de recepción | pocas | Pools + productor del buffer |
 | Consumidor de Inventario | 1 | Buffer acotado + `ReadWriteLock` |
-| Generadores | 2 | `SimClock` |
+| Generador de pedidos | 1 | `SimClock` + `Condition` de configuración |
 | Detector de deadlock | 1 | Snapshot bajo el lock del gestor |
 | Broadcaster de snapshots | 1 | Lecturas con locks breves |
 

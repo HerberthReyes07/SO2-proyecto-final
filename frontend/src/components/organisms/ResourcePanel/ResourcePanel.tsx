@@ -20,6 +20,7 @@ export function ResourcePanel({ resources }: ResourcePanelProps) {
             capacity={pool.capacity}
             holders={pool.holders}
             waiting={pool.waiting}
+            utilization={pool.utilization}
           />
         ))}
       </div>

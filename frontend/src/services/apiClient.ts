@@ -2,6 +2,8 @@
 
 type JsonMethod = 'POST' | 'PATCH' | 'PUT'
 
+const NO_CONTENT = 204
+
 /** Intenta leer `{ "error": "..." }` del cuerpo; si el servidor no respondió JSON usa el código HTTP. */
 async function readErrorMessage(response: Response): Promise<string> {
   try {
@@ -24,7 +26,7 @@ export async function getJson<T>(url: string): Promise<T> {
   return (await response.json()) as T
 }
 
-/** Envía `body` como JSON y devuelve la respuesta ya interpretada. Lanza `Error` si el servidor rechaza la petición. */
+/** Envía `body` como JSON y devuelve la respuesta ya interpretada (`undefined` si el servidor responde 204 sin cuerpo). Lanza `Error` si rechaza la petición. */
 export async function sendJson<T>(url: string, method: JsonMethod, body: unknown): Promise<T> {
   const response = await fetch(url, {
     method,
@@ -33,6 +35,9 @@ export async function sendJson<T>(url: string, method: JsonMethod, body: unknown
   })
   if (!response.ok) {
     throw new Error(await readErrorMessage(response))
+  }
+  if (response.status === NO_CONTENT) {
+    return undefined as T // p. ej. reiniciar estadísticas: éxito sin cuerpo que interpretar
   }
   return (await response.json()) as T
 }

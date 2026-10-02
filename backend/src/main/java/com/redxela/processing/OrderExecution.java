@@ -25,6 +25,9 @@ public final class OrderExecution implements Operation {
     private final QueuedOrder queued;
     private final ExecutionPlan plan;
     private volatile State state = State.initial();
+    // Instante simulado en que se le asignó encargado. Lo escribe el hilo que admite el pedido
+    // (despachador) antes de que arranque el hilo del pedido, que lo lee al terminar.
+    private volatile Duration admittedAt = Duration.ZERO;
 
     /**
      * @param queued el pedido tal como esperó en la lista; conserva su hora y número de llegada,
@@ -55,6 +58,14 @@ public final class OrderExecution implements Operation {
     /** Número de llegada del pedido; permite mostrar los pedidos en orden de llegada. */
     public long sequence() {
         return queued.sequence();
+    }
+
+    public Duration admittedAt() {
+        return admittedAt;
+    }
+
+    public void markAdmitted(Duration now) {
+        this.admittedAt = now;
     }
 
     // ---- Transiciones: solo las invoca el hilo del pedido ----

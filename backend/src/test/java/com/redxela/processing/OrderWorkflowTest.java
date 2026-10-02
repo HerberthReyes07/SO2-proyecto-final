@@ -5,9 +5,11 @@ import static com.redxela.testsupport.TestOrders.STANDARD_PRODUCT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.redxela.domain.CompletedOrder;
 import com.redxela.domain.Order;
 import com.redxela.domain.OrderStatus;
 import com.redxela.domain.ResourceType;
+import com.redxela.domain.ServiceLevel;
 import com.redxela.domain.Stage;
 import com.redxela.resources.OperationPreemptedException;
 import com.redxela.resources.PoolSnapshot;
@@ -84,6 +86,21 @@ class OrderWorkflowTest {
         assertThat(execution.order().status()).isEqualTo(OrderStatus.COMPLETED);
         assertThat(execution.progress(clock.now()).progress()).isEqualTo(1.0);
         assertNothingIsHeld();
+    }
+
+    @Test
+    void returns_a_summary_with_the_waiting_and_processing_times() throws Exception {
+        OrderExecution execution = admitted(TestOrders.order("O-1", STANDARD_PRODUCT, 3));
+
+        CompletedOrder summary = workflow.run(execution);
+
+        assertThat(summary.orderId()).isEqualTo("O-1");
+        assertThat(summary.level()).isEqualTo(ServiceLevel.STANDARD);
+        assertThat(summary.totalItems()).isEqualTo(3);
+        // El pedido "llegó" en el instante cero, así que esperó hasta el instante en que se admitió.
+        assertThat(summary.waited()).isEqualTo(execution.admittedAt());
+        // El proceso nunca dura menos que el trabajo de sus etapas (puede durar más por esperar recursos).
+        assertThat(summary.processing()).isGreaterThanOrEqualTo(execution.plan().totalWork());
     }
 
     @Test

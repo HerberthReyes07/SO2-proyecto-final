@@ -1,5 +1,6 @@
 package com.redxela.processing;
 
+import com.redxela.domain.CompletedOrder;
 import com.redxela.domain.QueuedOrder;
 import com.redxela.resources.OperationPreemptedException;
 import java.time.Duration;
@@ -7,9 +8,11 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,10 +34,20 @@ public final class OrderProcessor implements AutoCloseable {
             Executors.newThreadPerTaskExecutor(Thread.ofPlatform().name("order-", 1).factory());
     private final Map<String, OrderExecution> active = new ConcurrentHashMap<>();
     private final AtomicLong completed = new AtomicLong();
+    // Se recorre desde los hilos de los pedidos y se modifica rara vez (al armar la aplicación).
+    private final List<Consumer<CompletedOrder>> completionListeners = new CopyOnWriteArrayList<>();
 
     public OrderProcessor(OrderWorkflow workflow, ProcessingTimes times) {
         this.workflow = workflow;
         this.times = times;
+    }
+
+    /**
+     * Registra a alguien que quiere enterarse de cada pedido despachado (ej. las estadísticas).
+     * Se invoca en el hilo del pedido, así que debe ser rápido y seguro entre hilos.
+     */
+    public void addCompletionListener(Consumer<CompletedOrder> listener) {
+        completionListeners.add(listener);
     }
 
     /** Crea la ejecución de un pedido que salió de la lista de espera, con su plan de etapas. */
@@ -72,8 +85,9 @@ public final class OrderProcessor implements AutoCloseable {
 
     private void runAndTrack(OrderExecution execution) {
         try {
-            workflow.run(execution);
+            CompletedOrder summary = workflow.run(execution);
             completed.incrementAndGet();
+            notifyCompleted(summary);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt(); // el procesador se está cerrando
             LOG.info("Order {} interrupted", execution.id());
@@ -84,6 +98,17 @@ public final class OrderProcessor implements AutoCloseable {
             LOG.error("Order {} failed", execution.id(), e);
         } finally {
             active.remove(execution.id());
+        }
+    }
+
+    private void notifyCompleted(CompletedOrder summary) {
+        for (Consumer<CompletedOrder> listener : completionListeners) {
+            try {
+                listener.accept(summary);
+            } catch (RuntimeException e) {
+                // Un listener defectuoso no debe afectar al pedido ni a los demás listeners.
+                LOG.error("Completion listener failed for {}", summary.orderId(), e);
+            }
         }
     }
 

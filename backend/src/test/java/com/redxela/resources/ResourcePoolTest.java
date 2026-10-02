@@ -15,6 +15,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -231,6 +232,61 @@ class ResourcePoolTest {
         waiter.cancel(true);
 
         assertThat(waiter.isCancelled()).isTrue();
+    }
+
+    // ---- Ocupación: con tiempo falso para que los cálculos sean exactos ----
+
+    @Test
+    void utilization_is_the_busy_unit_time_over_the_capacity_time() throws Exception {
+        AtomicLong fakeTime = new AtomicLong();
+        ResourcePool pool = new ResourcePool(ResourceType.FORKLIFT, 4, (a, b) -> 0, fakeTime::get);
+        TestOperation first = new TestOperation("A", 0);
+        TestOperation second = new TestOperation("B", 0);
+
+        pool.acquire(first);               // t=0: 1 ocupada
+        fakeTime.set(10);
+        pool.acquire(second);              // t=10: 2 ocupadas
+        fakeTime.set(30);
+        pool.release(first);               // t=30: 1 ocupada
+        fakeTime.set(40);
+
+        // A estuvo 30 y B 30 unidades de tiempo: 60 de 4 × 40 = 160.
+        assertThat(pool.snapshot().utilization()).isEqualTo(60.0 / 160.0);
+    }
+
+    @Test
+    void utilization_of_a_fully_busy_pool_is_one_and_of_an_idle_pool_is_zero() throws Exception {
+        AtomicLong fakeTime = new AtomicLong();
+        ResourcePool pool = new ResourcePool(ResourceType.SCANNER, 1, (a, b) -> 0, fakeTime::get);
+        fakeTime.set(5);
+        assertThat(pool.snapshot().utilization()).isZero(); // nunca se usó
+
+        pool.acquire(new TestOperation("A", 0));
+        fakeTime.set(15);
+
+        assertThat(pool.snapshot().utilization()).isEqualTo(10.0 / 15.0); // ocioso 5, ocupado 10
+    }
+
+    @Test
+    void utilization_is_zero_before_any_time_has_passed() {
+        AtomicLong fakeTime = new AtomicLong(100);
+        ResourcePool pool = new ResourcePool(ResourceType.SCANNER, 1, (a, b) -> 0, fakeTime::get);
+
+        assertThat(pool.snapshot().utilization()).isZero();
+    }
+
+    @Test
+    void resetting_the_usage_measures_from_that_moment() throws Exception {
+        AtomicLong fakeTime = new AtomicLong();
+        ResourcePool pool = new ResourcePool(ResourceType.FORKLIFT, 4, (a, b) -> 0, fakeTime::get);
+        pool.acquire(new TestOperation("A", 0));
+        fakeTime.set(40);
+
+        pool.resetUsage();
+        fakeTime.set(50);
+
+        // Tras el reinicio: 1 unidad ocupada durante 10 de las 4 × 10 posibles.
+        assertThat(pool.snapshot().utilization()).isEqualTo(10.0 / 40.0);
     }
 
     // ---- Utilidades de prueba ----

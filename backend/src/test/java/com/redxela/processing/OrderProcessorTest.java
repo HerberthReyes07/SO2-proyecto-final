@@ -4,6 +4,7 @@ import static com.redxela.testsupport.TestOrders.HEAVY_PRODUCT;
 import static com.redxela.testsupport.TestOrders.STANDARD_PRODUCT;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.redxela.domain.CompletedOrder;
 import com.redxela.domain.Order;
 import com.redxela.domain.OrderStatus;
 import com.redxela.domain.ResourceType;
@@ -12,6 +13,8 @@ import com.redxela.sim.SimClock;
 import com.redxela.testsupport.Await;
 import com.redxela.testsupport.TestOrders;
 import java.time.Duration;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -49,6 +52,50 @@ class OrderProcessorTest {
             assertThat(pool.holders()).as("holders of %s", pool.type()).isEmpty();
             assertThat(pool.waiting()).as("waiting on %s", pool.type()).isEmpty();
         });
+    }
+
+    @Test
+    void notifies_the_listeners_of_every_completed_order() throws Exception {
+        clock.setSpeed(SimClock.MAX_SPEED);
+        List<CompletedOrder> summaries = new CopyOnWriteArrayList<>();
+        processor.addCompletionListener(summaries::add);
+
+        for (int i = 0; i < 3; i++) {
+            workflow.awaitFreeWorker();
+            admit(TestOrders.order("O-" + i, STANDARD_PRODUCT, 2));
+        }
+
+        Await.until("three summaries", () -> summaries.size() == 3);
+        assertThat(summaries).extracting(CompletedOrder::orderId).containsExactlyInAnyOrder("O-0", "O-1", "O-2");
+    }
+
+    @Test
+    void a_failing_listener_neither_breaks_the_order_nor_hides_it_from_the_other_listeners() throws Exception {
+        clock.setSpeed(SimClock.MAX_SPEED);
+        List<CompletedOrder> summaries = new CopyOnWriteArrayList<>();
+        processor.addCompletionListener(summary -> {
+            throw new IllegalStateException("broken listener");
+        });
+        processor.addCompletionListener(summaries::add);
+
+        admit(TestOrders.order("O-1", STANDARD_PRODUCT, 2));
+
+        Await.until("order completed", () -> processor.completedCount() == 1);
+        assertThat(summaries).hasSize(1);
+    }
+
+    @Test
+    void does_not_notify_orders_that_were_interrupted_before_finishing() throws Exception {
+        clock.pause();
+        List<CompletedOrder> summaries = new CopyOnWriteArrayList<>();
+        processor.addCompletionListener(summaries::add);
+        admit(TestOrders.order("O-1", HEAVY_PRODUCT, 2));
+        Await.until("working", () -> registry.pool(ResourceType.FORKLIFT).snapshot().holders().contains("O-1"));
+
+        processor.close();
+        Await.until("order removed", () -> processor.activeOrders(Duration.ZERO).isEmpty());
+
+        assertThat(summaries).isEmpty();
     }
 
     @Test

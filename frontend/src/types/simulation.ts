@@ -18,6 +18,8 @@ export interface PoolSnapshot {
   holders: string[]
   /** Ids de las operaciones en espera, en el orden en que se les concederá el recurso. */
   waiting: string[]
+  /** Ocupación promedio desde el último reinicio de estadísticas, entre 0 y 1. */
+  utilization: number
 }
 
 /** Etapas por las que pasa un pedido, en orden. */
@@ -73,10 +75,50 @@ export interface ClockSnapshot {
   paused: boolean
 }
 
+/** Estado del generador automático de pedidos. */
+export interface GeneratorState {
+  enabled: boolean
+  /** Intensidad: pedidos por minuto simulado. */
+  ordersPerMinute: number
+  /** Semilla vigente; anotarla permite repetir la misma secuencia de pedidos. */
+  seed: number
+  /** Pedidos generados desde que arrancó la aplicación. */
+  generated: number
+}
+
+/** Estadísticas de los pedidos despachados de un nivel de servicio (tiempos simulados, en ms). */
+export interface LevelStats {
+  level: ServiceLevelId
+  completed: number
+  avgWaitMillis: number
+  maxWaitMillis: number
+  avgProcessingMillis: number
+  /** Fracción de pedidos atendidos dentro del tiempo objetivo de su nivel, entre 0 y 1. */
+  onTimeRatio: number
+}
+
+/** Estadísticas generales de todos los niveles juntos. */
+export interface StatsTotals {
+  completed: number
+  avgWaitMillis: number
+  avgProcessingMillis: number
+  onTimeRatio: number
+  throughputPerMinute: number
+  /** Tiempo simulado transcurrido desde el último reinicio, en ms. */
+  elapsedMillis: number
+}
+
+export interface StatsSnapshot {
+  totals: StatsTotals
+  levels: LevelStats[]
+}
+
 /** Estado completo del centro de distribución. */
 export interface SimulationSnapshot {
   clock: ClockSnapshot
   scheduling: SchedulingSnapshot
+  generator: GeneratorState
+  stats: StatsSnapshot
   resources: PoolSnapshot[]
   activeOrders: OrderProgress[]
   completedOrders: number

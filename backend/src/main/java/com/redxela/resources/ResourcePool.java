@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.LongSupplier;
 
 /**
  * Pool de unidades idénticas de un recurso (ej. las 6 estaciones de empaque).
@@ -25,6 +26,11 @@ import java.util.concurrent.locks.ReentrantLock;
  * Por eso se implementa como un <b>monitor</b>: un {@link ReentrantLock} protege todo el estado y
  * cada operación que espera tiene su propia {@link Condition}, de modo que al liberar una unidad
  * se despierta únicamente al siguiente en turno (sin <i>thundering herd</i>).
+ *
+ * <h3>Ocupación</h3>
+ * Para medir la ocupación promedio el pool integra "unidades ocupadas × tiempo" cada vez que esa
+ * cantidad cambia (al conceder y al liberar), en lugar de muestrear de vez en cuando. Es exacto y,
+ * al medirse con el reloj simulado, una pausa no diluye el resultado.
  *
  * <h3>Reglas</h3>
  * <ul>
@@ -44,22 +50,37 @@ public final class ResourcePool {
     private Comparator<Operation> waitingOrder;
     private long nextTicket;
 
-    /** Crea un pool con la capacidad oficial del tipo y orden de llegada (FIFO). */
+    // Medición de ocupación (protegida por `lock`).
+    private final LongSupplier timeNanos;
+    private long busyUnitNanos;
+    private long lastChangeNanos;
+    private long usageSinceNanos;
+
+    /** Crea un pool con la capacidad oficial del tipo y orden de llegada (FIFO), midiendo con el reloj real. */
     public ResourcePool(ResourceType type) {
-        this(type, type.capacity(), (a, b) -> 0);
+        this(type, type.capacity(), (a, b) -> 0, System::nanoTime);
+    }
+
+    /** Pool con criterio de prioridad propio, midiendo la ocupación con el reloj real. */
+    public ResourcePool(ResourceType type, int capacity, Comparator<Operation> waitingOrder) {
+        this(type, capacity, waitingOrder, System::nanoTime);
     }
 
     /**
      * @param waitingOrder criterio de prioridad entre los que esperan; los empates se resuelven
      *                     por orden de llegada al pool, lo que evita inanición entre iguales
+     * @param timeNanos    fuente de tiempo para medir la ocupación (en la aplicación, el reloj simulado)
      */
-    public ResourcePool(ResourceType type, int capacity, Comparator<Operation> waitingOrder) {
+    public ResourcePool(ResourceType type, int capacity, Comparator<Operation> waitingOrder, LongSupplier timeNanos) {
         if (capacity <= 0) {
             throw new IllegalArgumentException("capacity must be positive");
         }
         this.type = Objects.requireNonNull(type, "type");
         this.capacity = capacity;
         this.waitingOrder = Objects.requireNonNull(waitingOrder, "waitingOrder");
+        this.timeNanos = Objects.requireNonNull(timeNanos, "timeNanos");
+        this.lastChangeNanos = timeNanos.getAsLong();
+        this.usageSinceNanos = lastChangeNanos;
     }
 
     public ResourceType type() {
@@ -84,6 +105,7 @@ public final class ResourcePool {
             waiters.add(self);
             try {
                 awaitTurn(self);
+                accumulateUsage(); // antes de cambiar la cantidad de ocupadas
                 holders.add(operation);
             } finally {
                 // Se ejecuta tanto si se concedió la unidad como si hubo interrupción o expulsión:
@@ -104,9 +126,11 @@ public final class ResourcePool {
     public void release(Operation operation) {
         lock.lock();
         try {
-            if (!holders.remove(operation)) {
+            if (!holders.contains(operation)) {
                 throw new IllegalStateException(operation.id() + " does not hold a unit of " + type);
             }
+            accumulateUsage(); // antes de cambiar la cantidad de ocupadas
+            holders.remove(operation);
             signalNextWaiter();
             unitAvailable.signalAll();
         } finally {
@@ -158,6 +182,19 @@ public final class ResourcePool {
         }
     }
 
+    /** Reinicia la medición de ocupación: a partir de ahora el promedio se calcula desde cero. */
+    public void resetUsage() {
+        lock.lock();
+        try {
+            long now = timeNanos.getAsLong();
+            busyUnitNanos = 0;
+            lastChangeNanos = now;
+            usageSinceNanos = now;
+        } finally {
+            lock.unlock();
+        }
+    }
+
     /** Cambia en caliente el criterio de prioridad (cambio de política de atención). */
     public void setWaitingOrder(Comparator<Operation> newOrder) {
         Objects.requireNonNull(newOrder, "newOrder");
@@ -179,13 +216,31 @@ public final class ResourcePool {
                     .sorted(turnOrder())
                     .map(waiter -> waiter.operation.id())
                     .toList();
-            return new PoolSnapshot(type, capacity, holderIds, waitingIds);
+            return new PoolSnapshot(type, capacity, holderIds, waitingIds, currentUtilization());
         } finally {
             lock.unlock();
         }
     }
 
     // ---- Internos: todos se invocan con `lock` tomado ----
+
+    /** Suma al acumulado las unidades que estuvieron ocupadas desde el último cambio. */
+    private void accumulateUsage() {
+        long now = timeNanos.getAsLong();
+        busyUnitNanos += holders.size() * (now - lastChangeNanos);
+        lastChangeNanos = now;
+    }
+
+    /** Ocupación promedio entre 0 y 1 desde el último reinicio, incluyendo el tramo en curso. */
+    private double currentUtilization() {
+        long now = timeNanos.getAsLong();
+        long elapsed = now - usageSinceNanos;
+        if (elapsed <= 0) {
+            return 0.0;
+        }
+        double busy = busyUnitNanos + (double) holders.size() * (now - lastChangeNanos);
+        return Math.min(1.0, busy / ((double) capacity * elapsed));
+    }
 
     /** Espera (liberando el lock) hasta que haya unidad libre y el hilo sea el primero en turno. */
     private void awaitTurn(Waiter self) throws InterruptedException, OperationPreemptedException {

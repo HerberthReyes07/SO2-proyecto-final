@@ -1,5 +1,6 @@
 import { Badge } from '@/components/atoms/Badge'
 import { ProgressBar } from '@/components/atoms/ProgressBar'
+import { formatPercent } from '@/utils/formatStats'
 import { getResourceStatus } from '@/utils/resourceStatus'
 import styles from './ResourceCard.module.css'
 
@@ -8,10 +9,12 @@ export interface ResourceCardProps {
   capacity: number
   holders: string[]
   waiting: string[]
+  /** Ocupación promedio desde el último reinicio de estadísticas, entre 0 y 1. */
+  utilization: number
 }
 
 /** Tarjeta de un recurso compartido: ocupación, quién lo usa y cuántas operaciones esperan. */
-export function ResourceCard({ label, capacity, holders, waiting }: ResourceCardProps) {
+export function ResourceCard({ label, capacity, holders, waiting, utilization }: ResourceCardProps) {
   const status = getResourceStatus(holders.length, capacity)
 
   return (
@@ -26,6 +29,7 @@ export function ResourceCard({ label, capacity, holders, waiting }: ResourceCard
         {holders.length} / {capacity} en uso
         {waiting.length > 0 && <span className={styles.waiting}> · {waiting.length} en espera</span>}
       </p>
+      <p className={styles.usage}>Ocupación promedio: {formatPercent(utilization)}</p>
 
       {holders.length > 0 && (
         <ul className={styles.holders} aria-label={`Operaciones usando ${label}`}>

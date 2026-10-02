@@ -22,6 +22,14 @@ describe('sendJson', () => {
     })
   })
 
+  it('returns nothing, without trying to parse a body, when the server answers 204', async () => {
+    const json = vi.fn()
+    stubFetch({ ok: true, status: 204, json })
+
+    await expect(sendJson('/api/stats/reset', 'POST', {})).resolves.toBeUndefined()
+    expect(json).not.toHaveBeenCalled()
+  })
+
   it('throws the message sent by the backend when the request is rejected', async () => {
     stubFetch({ ok: false, status: 400, json: async () => ({ error: 'speed must be between 0.1 and 100000.0' }) })
 

@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongSupplier;
 
 /**
  * Catálogo de pools del centro de distribución: uno por cada {@link ResourceType}.
@@ -17,9 +18,18 @@ public final class ResourceRegistry {
 
     private final Map<ResourceType, ResourcePool> pools = new EnumMap<>(ResourceType.class);
 
+    /** Registro que mide la ocupación con el reloj real (útil en pruebas aisladas). */
     public ResourceRegistry() {
+        this(System::nanoTime);
+    }
+
+    /**
+     * @param timeNanos fuente de tiempo para medir la ocupación; en la aplicación es el reloj
+     *                  simulado, de modo que una pausa no cuenta como tiempo ocioso
+     */
+    public ResourceRegistry(LongSupplier timeNanos) {
         for (ResourceType type : ResourceType.values()) {
-            pools.put(type, new ResourcePool(type));
+            pools.put(type, new ResourcePool(type, type.capacity(), (a, b) -> 0, timeNanos));
         }
     }
 
@@ -30,6 +40,11 @@ public final class ResourceRegistry {
     /** Cambia en todos los pools el criterio con que se elige a quién conceder el recurso. */
     public void setWaitingOrder(Comparator<Operation> waitingOrder) {
         pools.values().forEach(pool -> pool.setWaitingOrder(waitingOrder));
+    }
+
+    /** Reinicia la medición de ocupación de todos los pools. */
+    public void resetUsage() {
+        pools.values().forEach(ResourcePool::resetUsage);
     }
 
     /** Fotos de todos los pools, en orden global de recursos. */

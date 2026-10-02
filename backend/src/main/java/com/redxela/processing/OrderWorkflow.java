@@ -1,5 +1,6 @@
 package com.redxela.processing;
 
+import com.redxela.domain.CompletedOrder;
 import com.redxela.domain.OrderStatus;
 import com.redxela.domain.ResourceType;
 import com.redxela.domain.Stage;
@@ -7,6 +8,7 @@ import com.redxela.resources.OperationPreemptedException;
 import com.redxela.resources.ResourcePool;
 import com.redxela.resources.ResourceRegistry;
 import com.redxela.sim.SimClock;
+import java.time.Duration;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -46,9 +48,10 @@ public final class OrderWorkflow {
         workers().awaitAvailableUnit();
     }
 
-    /** Asigna un encargado al pedido y lo marca como en proceso. */
+    /** Asigna un encargado al pedido, lo marca como en proceso y registra el instante de admisión. */
     public void assignWorker(OrderExecution execution) throws InterruptedException, OperationPreemptedException {
         workers().acquire(execution);
+        execution.markAdmitted(clock.now());
         execution.resourceAcquired(ResourceType.WAREHOUSE_WORKER);
         execution.order().status(OrderStatus.PROCESSING);
     }
@@ -64,9 +67,10 @@ public final class OrderWorkflow {
      * Ejecuta las etapas del pedido hasta completarlo. Pase lo que pase (interrupción, expulsión o
      * error) libera todo lo que retiene, incluido el encargado, antes de salir.
      *
+     * @return el resumen del pedido despachado, con sus tiempos de espera y de proceso
      * @throws IllegalStateException si el pedido no tiene un encargado asignado
      */
-    public void run(OrderExecution execution) throws InterruptedException, OperationPreemptedException {
+    public CompletedOrder run(OrderExecution execution) throws InterruptedException, OperationPreemptedException {
         if (!execution.holds(ResourceType.WAREHOUSE_WORKER)) {
             throw new IllegalStateException(execution.id() + " must have a worker assigned before running");
         }
@@ -86,6 +90,18 @@ public final class OrderWorkflow {
         }
         // Solo se llega aquí si no hubo excepción, y ya con todos los recursos liberados.
         execution.order().status(OrderStatus.COMPLETED);
+        return summarize(execution);
+    }
+
+    private CompletedOrder summarize(OrderExecution execution) {
+        Duration completedAt = clock.now();
+        Duration waited = execution.admittedAt().minus(execution.queued().arrivalTime());
+        return new CompletedOrder(
+                execution.id(),
+                execution.order().serviceLevel(),
+                execution.order().totalItems(),
+                waited.isNegative() ? Duration.ZERO : waited,
+                completedAt.minus(execution.admittedAt()));
     }
 
     private ResourcePool workers() {
