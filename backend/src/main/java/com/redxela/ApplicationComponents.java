@@ -6,12 +6,14 @@ import com.redxela.api.CatalogRoutes;
 import com.redxela.api.ClockRoutes;
 import com.redxela.api.CustomerRoutes;
 import com.redxela.api.OrderRoutes;
+import com.redxela.api.SchedulingRoutes;
 import com.redxela.api.SimulationSnapshotFactory;
 import com.redxela.api.SnapshotBroadcaster;
 import com.redxela.catalog.ProductCatalog;
 import com.redxela.customers.CustomerRegistry;
 import com.redxela.orders.OrderService;
 import com.redxela.processing.OrderProcessor;
+import com.redxela.processing.OrderScheduler;
 import com.redxela.processing.OrderWorkflow;
 import com.redxela.processing.ProcessingTimes;
 import com.redxela.resources.ResourceRegistry;
@@ -30,6 +32,7 @@ public final class ApplicationComponents implements AutoCloseable {
 
     private final SimClock clock = new SimClock();
     private final OrderProcessor orderProcessor;
+    private final OrderScheduler scheduler;
     private final SnapshotBroadcaster broadcaster;
     private final ApiServer server;
 
@@ -40,20 +43,24 @@ public final class ApplicationComponents implements AutoCloseable {
 
         OrderWorkflow workflow = new OrderWorkflow(resources, clock);
         this.orderProcessor = new OrderProcessor(workflow, ProcessingTimes.defaults());
-        OrderService orderService = new OrderService(catalog, customers, orderProcessor);
+        this.scheduler = new OrderScheduler(clock, resources, workflow, orderProcessor);
+        OrderService orderService = new OrderService(catalog, customers, scheduler);
 
-        SimulationSnapshotFactory snapshots = new SimulationSnapshotFactory(clock, resources, orderProcessor);
+        SimulationSnapshotFactory snapshots =
+                new SimulationSnapshotFactory(clock, resources, scheduler, orderProcessor);
         this.broadcaster = new SnapshotBroadcaster(snapshots::create);
         List<ApiRoutes> routes = List.of(
                 new ClockRoutes(clock),
                 new CatalogRoutes(catalog),
                 new CustomerRoutes(customers),
-                new OrderRoutes(orderService));
+                new OrderRoutes(orderService),
+                new SchedulingRoutes(scheduler));
         this.server = new ApiServer(broadcaster, routes);
     }
 
     /** Arranca el servidor y devuelve el puerto real (útil con el puerto 0 en los tests). */
     public int start(int port) {
+        scheduler.start();
         broadcaster.start(SNAPSHOT_PERIOD);
         return server.start(port);
     }
@@ -66,6 +73,7 @@ public final class ApplicationComponents implements AutoCloseable {
     public void close() {
         broadcaster.close();
         server.close();
+        scheduler.close(); // primero el despachador, para que no admita pedidos en un procesador cerrado
         orderProcessor.close();
     }
 }

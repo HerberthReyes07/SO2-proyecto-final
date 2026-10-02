@@ -22,23 +22,45 @@ Los tiempos objetivo (1, 10, 30, 60, 120 min) exigen un `SimClock` con factor de
 (1 s real = 1 min simulado por defecto, ajustable ×1 … ×600) y pausa. Todo el sistema consulta ese
 reloj; ningún componente usa `System.currentTimeMillis()` para decisiones de la simulación.
 
-## 3. Niveles de servicio y políticas de atención
+## 3. Niveles de servicio, lista de espera y políticas de atención
 
 El tiempo objetivo funciona como deadline: `deadline = llegada + objetivo del nivel`.
 
-| Política | Criterio | Qué demuestra |
+| Política | Clave de orden (menor = primero) | Qué demuestra |
 |---|---|---|
-| FIFO | Orden de llegada | Línea base |
-| Prioridad estricta | Nivel, desempate por llegada | Inanición del nivel 5 |
-| Prioridad con envejecimiento | `nivel − ⌊espera / T⌋` | Evita la inanición |
-| EDF | Deadline más próximo | La tabla del enunciado ya son deadlines |
-| SJF por artículos | Menos unidades primero | Libera estaciones rápido, castiga pedidos grandes |
+| FIFO | número de llegada | Línea base |
+| Prioridad estricta | nivel, luego llegada | Inanición del nivel 5 |
+| Prioridad con envejecimiento | `llegada + nivel × 10 min` | Evita la inanición |
+| EDF | `llegada + objetivo del nivel` | La tabla del enunciado ya son deadlines |
+| SJF por artículos | total de artículos, luego llegada | Libera estaciones rápido, castiga pedidos grandes |
 
-Cada política es un `Comparator`, intercambiable en caliente (patrón Strategy), sin preemption.
+Cada política es un `Comparator<QueuedOrder>`, intercambiable en caliente (patrón Strategy), sin preemption.
+Cuando dos pedidos empatan, siempre desempata el número de llegada.
 
-- **Decisión tardía:** el despachador obtiene primero un encargado libre y *después* elige el mejor pedido de la cola; así un Exprés que llega mientras tanto no queda detrás de uno ya elegido.
-- **Colas de los pools:** cada pool ordena a sus esperas con el mismo comparador; sin esto un Exprés esperaría detrás de un Económico dentro de la estación.
-- **Benchmark:** mismo generador con semilla fija, reloj acelerado, una corrida por política. Métricas: espera promedio por nivel, % que cumple su objetivo, espera máxima, throughput y utilización de recursos.
+**Todas las claves son independientes del tiempo actual.** El envejecimiento se suele escribir como
+`nivel − espera/T`, pero eso depende de "ahora" y el orden cambiaría *mientras* se ordena (los algoritmos de
+ordenamiento pueden fallar con comparadores inestables). Como "ahora" aparece igual a ambos lados de la
+comparación, se cancela: `nivelA − (ahora − llegadaA)/T < nivelB − (ahora − llegadaB)/T ⇔ llegadaA + nivelA·T <
+llegadaB + nivelB·T`. Así el envejecimiento es una clave fija por pedido.
+
+### Lista de espera y despachador
+
+- `WaitingList`: lista (no cola de prioridad) protegida por un `ReentrantLock` con una `Condition notEmpty`.
+  Elegir al mejor es un recorrido O(n) con la política vigente, lo que hace inmediato el cambio de política en
+  caliente; una cola de prioridad tendría que reconstruirse.
+- `Dispatcher` (un hilo): **decisión tardía**. Espera a que haya algún pedido y algún encargado libre y *solo
+  entonces* elige al mejor. Si eligiera antes, un Exprés que llega mientras no hay encargado quedaría detrás de uno
+  ya elegido. Esperar capacidad no ocupa recursos (`ResourcePool.awaitAvailableUnit()`, que no toma la unidad).
+- El despachador es el único que asigna encargados, así que entre "hay uno libre" y "lo tomo" nadie puede
+  quitárselo. Los encargados limitan los pedidos en proceso a 10.
+- Cada pool de recursos ordena a sus esperas con la misma política (`OperationOrdering`), de modo que un Exprés
+  tampoco espera detrás de un Económico dentro de una estación.
+- Si el procesador está cerrado, el despachador devuelve el encargado y el pedido a la lista y se detiene
+  (en vez de girar sin parar).
+- El snapshot envía solo los primeros 50 pedidos en espera más el total, para que no crezca sin medida.
+
+**Benchmark (paso 8):** mismo generador con semilla fija, reloj acelerado, una corrida por política. Métricas:
+espera promedio por nivel, % que cumple su objetivo, espera máxima, throughput y utilización de recursos.
 
 ## 4. Tipos de mercancía y flujo de un pedido
 
@@ -134,8 +156,8 @@ Dos camiones ocupan las 2 áreas de carga y un despacho sostiene el escáner.
 
 | Hilo | Cantidad | Mecanismo clave |
 |---|---|---|
-| Despachador | 1 | Semáforo de encargados + cola de prioridad |
-| Operación de pedido | uno por pedido (paso 3: ≤ 10 en proceso) | `ResourcePool` (`ReentrantLock` + `Condition`) |
+| Despachador | 1 | `WaitingList` (`Lock` + `Condition`) + `ResourcePool.awaitAvailableUnit` |
+| Operación de pedido | ≤ 10 en proceso (uno por encargado) | `ResourcePool` (`ReentrantLock` + `Condition`) |
 | Operación de recepción | pocas | Pools + productor del buffer |
 | Consumidor de Inventario | 1 | Buffer acotado + `ReadWriteLock` |
 | Generadores | 2 | `SimClock` |

@@ -27,6 +27,7 @@ describe('buildProductOptions', () => {
     ],
     merchandiseTypes: [{ id: 'HEAVY', displayName: 'Pesado', description: '', recipe: [] }],
     serviceLevels: [],
+    policies: [],
   }
 
   it('appends the merchandise type name to each product', () => {

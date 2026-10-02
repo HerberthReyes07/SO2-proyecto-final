@@ -1,4 +1,4 @@
-import type { ServiceLevelId } from '@/types/catalog'
+import type { PolicyId, ServiceLevelId } from '@/types/catalog'
 
 /** Tipos que reflejan el contrato JSON del backend (record `SimulationSnapshot` y relacionados). */
 
@@ -43,6 +43,27 @@ export interface OrderProgress {
   remainingMillis: number
 }
 
+/** Un pedido en la lista de espera. */
+export interface WaitingOrder {
+  orderId: string
+  customerName: string
+  serviceLevel: ServiceLevelId
+  totalItems: number
+  /** Tiempo simulado que lleva esperando, en ms. */
+  waitedMillis: number
+  /** Tiempo máximo de espera objetivo de su nivel, en ms; si se supera, el pedido está retrasado. */
+  targetWaitMillis: number
+}
+
+/** Política vigente y lista de espera. */
+export interface SchedulingSnapshot {
+  policy: PolicyId
+  /** Total de pedidos en espera (la lista `waiting` puede mostrar solo los primeros). */
+  waitingTotal: number
+  /** Los primeros pedidos en espera, en el orden en que se atenderán. */
+  waiting: WaitingOrder[]
+}
+
 /** Foto del reloj simulado. */
 export interface ClockSnapshot {
   /** Milisegundos simulados transcurridos desde el inicio de la simulación. */
@@ -55,6 +76,7 @@ export interface ClockSnapshot {
 /** Estado completo del centro de distribución. */
 export interface SimulationSnapshot {
   clock: ClockSnapshot
+  scheduling: SchedulingSnapshot
   resources: PoolSnapshot[]
   activeOrders: OrderProgress[]
   completedOrders: number

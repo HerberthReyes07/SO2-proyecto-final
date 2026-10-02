@@ -10,9 +10,11 @@ import java.util.List;
  * @param products         productos del catálogo
  * @param merchandiseTypes tipos de mercancía con su descripción y receta de recursos
  * @param serviceLevels    niveles de servicio con su tiempo objetivo
+ * @param policies         políticas de atención disponibles, con la explicación de su criterio
  */
 public record CatalogResponse(
         List<Product> products,
         List<MerchandiseTypeInfo> merchandiseTypes,
-        List<ServiceLevelInfo> serviceLevels) {
+        List<ServiceLevelInfo> serviceLevels,
+        List<PolicyInfo> policies) {
 }

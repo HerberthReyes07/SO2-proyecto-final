@@ -5,6 +5,7 @@ import { ClockPanel } from '@/components/organisms/ClockPanel'
 import { CustomerForm } from '@/components/organisms/CustomerForm'
 import { OrderForm } from '@/components/organisms/OrderForm'
 import { ResourcePanel } from '@/components/organisms/ResourcePanel'
+import { WaitingListPanel } from '@/components/organisms/WaitingListPanel'
 import { DashboardTemplate } from '@/components/templates/DashboardTemplate'
 import { useClockControls } from '@/hooks/useClockControls'
 import { useCatalog, useCustomers } from '@/hooks/useReferenceData'
@@ -12,7 +13,8 @@ import { useRemoteAction } from '@/hooks/useRemoteAction'
 import { useSimulationStream } from '@/hooks/useSimulationStream'
 import { createCustomer } from '@/services/customerApi'
 import { placeOrder } from '@/services/orderApi'
-import type { CreateCustomerRequest, PlaceOrderRequest } from '@/types/catalog'
+import { changePolicy } from '@/services/schedulingApi'
+import type { CreateCustomerRequest, PlaceOrderRequest, PolicyId } from '@/types/catalog'
 import type { ConnectionStatus } from '@/types/simulation'
 import {
   buildCustomerOptions,
@@ -35,6 +37,7 @@ export function DashboardPage() {
   const customers = useCustomers()
   const customerAction = useRemoteAction(createCustomer)
   const orderAction = useRemoteAction(placeOrder)
+  const policyAction = useRemoteAction(changePolicy)
 
   const serviceLevels = catalog.data?.serviceLevels
   const levelOptions = useMemo(() => buildServiceLevelOptions(serviceLevels ?? []), [serviceLevels])
@@ -51,6 +54,7 @@ export function DashboardPage() {
     return created !== null
   }
   const handlePlaceOrder = async (request: PlaceOrderRequest) => (await orderAction.run(request)) !== null
+  const handlePolicyChange = (policy: PolicyId) => void policyAction.run(policy)
 
   const connection = CONNECTION_BADGES[status]
   const referenceDataError = catalog.error ?? customers.error
@@ -97,6 +101,15 @@ export function DashboardPage() {
     >
       {snapshot ? (
         <>
+          <WaitingListPanel
+            policies={catalog.data?.policies ?? []}
+            currentPolicy={snapshot.scheduling.policy}
+            waiting={snapshot.scheduling.waiting}
+            waitingTotal={snapshot.scheduling.waitingTotal}
+            serviceLevelNames={levelNames}
+            onPolicyChange={handlePolicyChange}
+            policyError={policyAction.error}
+          />
           <ActiveOrdersPanel
             orders={snapshot.activeOrders}
             completedCount={snapshot.completedOrders}

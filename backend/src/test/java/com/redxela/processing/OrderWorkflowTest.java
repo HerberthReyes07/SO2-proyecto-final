@@ -3,18 +3,19 @@ package com.redxela.processing;
 import static com.redxela.testsupport.TestOrders.HEAVY_PRODUCT;
 import static com.redxela.testsupport.TestOrders.STANDARD_PRODUCT;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.redxela.domain.Order;
 import com.redxela.domain.OrderStatus;
 import com.redxela.domain.ResourceType;
 import com.redxela.domain.Stage;
+import com.redxela.resources.OperationPreemptedException;
 import com.redxela.resources.PoolSnapshot;
 import com.redxela.resources.ResourceRegistry;
 import com.redxela.sim.SimClock;
 import com.redxela.testsupport.Await;
 import com.redxela.testsupport.FakeOperation;
 import com.redxela.testsupport.TestOrders;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -50,8 +51,33 @@ class OrderWorkflowTest {
     }
 
     @Test
-    void completes_the_order_and_releases_every_resource() throws Exception {
-        OrderExecution execution = execution(TestOrders.order("O-1", HEAVY_PRODUCT, 3));
+    void assigning_a_worker_marks_the_order_as_processing_and_unassigning_undoes_it() throws Exception {
+        OrderExecution execution = execution(TestOrders.order("O-1", STANDARD_PRODUCT, 2));
+
+        workflow.assignWorker(execution);
+
+        assertThat(holdersOf(ResourceType.WAREHOUSE_WORKER)).containsExactly("O-1");
+        assertThat(execution.order().status()).isEqualTo(OrderStatus.PROCESSING);
+        assertThat(execution.holds(ResourceType.WAREHOUSE_WORKER)).isTrue();
+
+        workflow.unassignWorker(execution);
+
+        assertThat(holdersOf(ResourceType.WAREHOUSE_WORKER)).isEmpty();
+        assertThat(execution.order().status()).isEqualTo(OrderStatus.WAITING);
+        assertThat(execution.holds(ResourceType.WAREHOUSE_WORKER)).isFalse();
+    }
+
+    @Test
+    void refuses_to_run_an_order_that_has_no_worker_assigned() {
+        OrderExecution execution = execution(TestOrders.order("O-1", STANDARD_PRODUCT, 2));
+
+        assertThatThrownBy(() -> workflow.run(execution)).isInstanceOf(IllegalStateException.class);
+        assertNothingIsHeld();
+    }
+
+    @Test
+    void completes_the_order_and_releases_every_resource_including_the_worker() throws Exception {
+        OrderExecution execution = admitted(TestOrders.order("O-1", HEAVY_PRODUCT, 3));
 
         workflow.run(execution);
 
@@ -63,7 +89,7 @@ class OrderWorkflowTest {
     @Test
     void holds_the_worker_and_the_forklift_while_picking_a_heavy_order() throws Exception {
         clock.pause();
-        OrderExecution execution = execution(TestOrders.order("O-1", HEAVY_PRODUCT, 3));
+        OrderExecution execution = admitted(TestOrders.order("O-1", HEAVY_PRODUCT, 3));
 
         Future<?> running = start(execution);
         Await.until("picking in progress", () -> {
@@ -73,7 +99,6 @@ class OrderWorkflowTest {
         });
 
         assertThat(progressOf(execution).stage()).isEqualTo(Stage.PICKING);
-        assertThat(execution.order().status()).isEqualTo(OrderStatus.PROCESSING);
         assertThat(holdersOf(ResourceType.FORKLIFT)).containsExactly("O-1");
         assertThat(holdersOf(ResourceType.WAREHOUSE_WORKER)).containsExactly("O-1");
 
@@ -86,7 +111,7 @@ class OrderWorkflowTest {
     void keeps_the_previous_stage_resource_until_the_next_one_is_acquired() throws Exception {
         // Se ocupan las 6 estaciones de empaque: el pedido pesado llegará a empaque y se quedará esperando.
         List<FakeOperation> blockers = occupyAll(ResourceType.PACKING_STATION);
-        OrderExecution execution = execution(TestOrders.order("O-1", HEAVY_PRODUCT, 3));
+        OrderExecution execution = admitted(TestOrders.order("O-1", HEAVY_PRODUCT, 3));
 
         Future<?> running = start(execution);
         Await.until("waiting for a packing station", () -> progressOf(execution).awaiting() == ResourceType.PACKING_STATION);
@@ -104,31 +129,14 @@ class OrderWorkflowTest {
 
         clock.resume();
         running.get();
-        releaseAll(ResourceType.PACKING_STATION, blockers.subList(1, blockers.size()));
+        blockers.subList(1, blockers.size()).forEach(blocker -> registry.pool(ResourceType.PACKING_STATION).release(blocker));
         assertNothingIsHeld();
-    }
-
-    @Test
-    void waits_in_the_waiting_state_when_every_worker_is_busy() throws Exception {
-        List<FakeOperation> blockers = occupyAll(ResourceType.WAREHOUSE_WORKER);
-        OrderExecution execution = execution(TestOrders.order("O-1", STANDARD_PRODUCT, 2));
-
-        Future<?> running = start(execution);
-        Await.until("waiting for a worker", () -> progressOf(execution).awaiting() == ResourceType.WAREHOUSE_WORKER);
-
-        assertThat(execution.order().status()).isEqualTo(OrderStatus.WAITING);
-        assertThat(progressOf(execution).held()).isEmpty();
-
-        registry.pool(ResourceType.WAREHOUSE_WORKER).release(blockers.get(0));
-        running.get();
-        assertThat(execution.order().status()).isEqualTo(OrderStatus.COMPLETED);
-        releaseAll(ResourceType.WAREHOUSE_WORKER, blockers.subList(1, blockers.size()));
     }
 
     @Test
     void releases_everything_when_interrupted_in_the_middle_of_the_work() throws Exception {
         clock.pause();
-        OrderExecution execution = execution(TestOrders.order("O-1", HEAVY_PRODUCT, 3));
+        OrderExecution execution = admitted(TestOrders.order("O-1", HEAVY_PRODUCT, 3));
         Future<?> running = start(execution);
         Await.until("working", () -> holdersOf(ResourceType.FORKLIFT).contains("O-1") && progressOf(execution).awaiting() == null);
 
@@ -141,7 +149,14 @@ class OrderWorkflowTest {
     // ---- Utilidades ----
 
     private OrderExecution execution(Order order) {
-        return new OrderExecution(order, ExecutionPlan.forOrder(order, ProcessingTimes.defaults()), 1);
+        return new OrderExecution(TestOrders.queued(order, 1), ExecutionPlan.forOrder(order, ProcessingTimes.defaults()));
+    }
+
+    /** Ejecución que ya tiene encargado asignado, como la entrega el despachador. */
+    private OrderExecution admitted(Order order) throws InterruptedException, OperationPreemptedException {
+        OrderExecution execution = execution(order);
+        workflow.assignWorker(execution);
+        return execution;
     }
 
     private Future<?> start(OrderExecution execution) {
@@ -160,7 +175,7 @@ class OrderWorkflowTest {
     }
 
     /** Ocupa todas las unidades del pool con operaciones falsas. */
-    private List<FakeOperation> occupyAll(ResourceType type) throws InterruptedException, com.redxela.resources.OperationPreemptedException {
+    private List<FakeOperation> occupyAll(ResourceType type) throws InterruptedException, OperationPreemptedException {
         List<FakeOperation> blockers = new ArrayList<>();
         for (int i = 0; i < type.capacity(); i++) {
             FakeOperation blocker = new FakeOperation("blocker-" + i);
@@ -168,10 +183,6 @@ class OrderWorkflowTest {
             blockers.add(blocker);
         }
         return blockers;
-    }
-
-    private void releaseAll(ResourceType type, List<FakeOperation> blockers) {
-        blockers.forEach(blocker -> registry.pool(type).release(blocker));
     }
 
     private boolean nothingIsHeld() {

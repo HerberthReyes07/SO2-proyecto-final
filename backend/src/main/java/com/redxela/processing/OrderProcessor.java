@@ -1,6 +1,6 @@
 package com.redxela.processing;
 
-import com.redxela.domain.Order;
+import com.redxela.domain.QueuedOrder;
 import com.redxela.resources.OperationPreemptedException;
 import java.time.Duration;
 import java.util.Comparator;
@@ -14,7 +14,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Lanza un hilo real por cada pedido y mantiene el registro de los que están en proceso.
+ * Ejecuta los pedidos ya admitidos, cada uno en su propio hilo real, y mantiene el registro de los
+ * que están en proceso. No decide cuándo admitir un pedido: eso es del despachador.
  *
  * <p>Un {@code ConcurrentHashMap} basta como registro: cada pedido se inserta antes de que su hilo
  * arranque y se quita al terminar, y los lectores (snapshots) solo necesitan una vista aproximada
@@ -29,7 +30,6 @@ public final class OrderProcessor implements AutoCloseable {
     private final ExecutorService threads =
             Executors.newThreadPerTaskExecutor(Thread.ofPlatform().name("order-", 1).factory());
     private final Map<String, OrderExecution> active = new ConcurrentHashMap<>();
-    private final AtomicLong arrivals = new AtomicLong();
     private final AtomicLong completed = new AtomicLong();
 
     public OrderProcessor(OrderWorkflow workflow, ProcessingTimes times) {
@@ -37,15 +37,23 @@ public final class OrderProcessor implements AutoCloseable {
         this.times = times;
     }
 
-    /** Empieza a procesar el pedido en su propio hilo; retorna de inmediato. */
-    public void submit(Order order) {
-        OrderExecution execution = new OrderExecution(
-                order, ExecutionPlan.forOrder(order, times), arrivals.incrementAndGet());
-        active.put(order.id(), execution);
+    /** Crea la ejecución de un pedido que salió de la lista de espera, con su plan de etapas. */
+    public OrderExecution newExecution(QueuedOrder queued) {
+        return new OrderExecution(queued, ExecutionPlan.forOrder(queued.order(), times));
+    }
+
+    /**
+     * Empieza a ejecutar el pedido en su propio hilo; retorna de inmediato.
+     *
+     * @param execution ejecución que ya tiene un encargado asignado ({@link OrderWorkflow#assignWorker})
+     * @throws java.util.concurrent.RejectedExecutionException si el procesador ya fue cerrado
+     */
+    public void start(OrderExecution execution) {
+        active.put(execution.id(), execution);
         try {
             threads.execute(() -> runAndTrack(execution));
         } catch (RuntimeException e) {
-            active.remove(order.id()); // no se pudo lanzar el hilo (ej. procesador cerrado)
+            active.remove(execution.id()); // no se pudo lanzar el hilo
             throw e;
         }
     }

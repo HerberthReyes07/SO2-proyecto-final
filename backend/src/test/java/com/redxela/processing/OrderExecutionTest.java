@@ -14,9 +14,8 @@ class OrderExecutionTest {
 
     // Pedido estándar de 10 unidades: picking 80 s + empaque 200 s + despacho 50 s = 330 s de trabajo.
     private final OrderExecution execution = new OrderExecution(
-            TestOrders.order("O-1", TestOrders.STANDARD_PRODUCT, 10),
-            ExecutionPlan.forOrder(TestOrders.order("O-1", TestOrders.STANDARD_PRODUCT, 10), ProcessingTimes.defaults()),
-            1);
+            TestOrders.queued(TestOrders.order("O-1", TestOrders.STANDARD_PRODUCT, 10), 1),
+            ExecutionPlan.forOrder(TestOrders.order("O-1", TestOrders.STANDARD_PRODUCT, 10), ProcessingTimes.defaults()));
 
     @Test
     void a_new_execution_has_no_progress_and_all_the_work_remaining() {

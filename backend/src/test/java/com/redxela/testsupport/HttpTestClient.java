@@ -33,6 +33,12 @@ public final class HttpTestClient {
                 .POST(HttpRequest.BodyPublishers.ofString(body)));
     }
 
+    public Response put(String path, String body) throws IOException, InterruptedException {
+        return send(HttpRequest.newBuilder(URI.create(baseUrl + path))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body)));
+    }
+
     private Response send(HttpRequest.Builder request) throws IOException, InterruptedException {
         HttpResponse<String> response = http.send(request.build(), HttpResponse.BodyHandlers.ofString());
         return new Response(response.statusCode(), json.readTree(response.body()));

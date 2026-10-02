@@ -6,7 +6,7 @@ import com.redxela.domain.Customer;
 import com.redxela.domain.Order;
 import com.redxela.domain.OrderLine;
 import com.redxela.domain.Product;
-import com.redxela.processing.OrderProcessor;
+import com.redxela.processing.OrderScheduler;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Punto de entrada para crear pedidos: valida lo que pide el usuario, construye el {@link Order}
- * y se lo entrega al procesador. Tanto el formulario manual como el generador automático pasarán por aquí.
+ * y se lo entrega al planificador. Tanto el formulario manual como el generador automático pasarán por aquí.
  */
 public final class OrderService {
 
@@ -24,17 +24,17 @@ public final class OrderService {
 
     private final ProductCatalog catalog;
     private final CustomerRegistry customers;
-    private final OrderProcessor processor;
+    private final OrderScheduler scheduler;
     private final AtomicInteger nextNumber = new AtomicInteger();
 
-    public OrderService(ProductCatalog catalog, CustomerRegistry customers, OrderProcessor processor) {
+    public OrderService(ProductCatalog catalog, CustomerRegistry customers, OrderScheduler scheduler) {
         this.catalog = catalog;
         this.customers = customers;
-        this.processor = processor;
+        this.scheduler = scheduler;
     }
 
     /**
-     * Crea un pedido y empieza a procesarlo. Si una misma línea repite un producto, se suman sus cantidades.
+     * Crea un pedido y lo manda a la lista de espera. Si una misma línea repite un producto, se suman sus cantidades.
      *
      * @throws IllegalArgumentException si el cliente o un producto no existen, o las cantidades no son válidas
      */
@@ -44,7 +44,7 @@ public final class OrderService {
         List<OrderLine> lines = buildLines(requests);
 
         Order order = new Order(String.format("ORD-%04d", nextNumber.incrementAndGet()), customer, lines);
-        processor.submit(order);
+        scheduler.enqueue(order);
         return order;
     }
 

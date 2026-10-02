@@ -1,6 +1,7 @@
 package com.redxela.processing;
 
 import com.redxela.domain.Order;
+import com.redxela.domain.QueuedOrder;
 import com.redxela.domain.ResourceType;
 import com.redxela.domain.Stage;
 import com.redxela.resources.Operation;
@@ -21,35 +22,39 @@ import java.util.Set;
  */
 public final class OrderExecution implements Operation {
 
-    private final Order order;
+    private final QueuedOrder queued;
     private final ExecutionPlan plan;
-    private final long sequence;
     private volatile State state = State.initial();
 
     /**
-     * @param sequence número de llegada; permite mostrar los pedidos en orden de creación
+     * @param queued el pedido tal como esperó en la lista; conserva su hora y número de llegada,
+     *               que las políticas de atención también usan para ordenar las esperas por recursos
      */
-    public OrderExecution(Order order, ExecutionPlan plan, long sequence) {
-        this.order = order;
+    public OrderExecution(QueuedOrder queued, ExecutionPlan plan) {
+        this.queued = queued;
         this.plan = plan;
-        this.sequence = sequence;
     }
 
     @Override
     public String id() {
-        return order.id();
+        return queued.order().id();
+    }
+
+    public QueuedOrder queued() {
+        return queued;
     }
 
     public Order order() {
-        return order;
+        return queued.order();
     }
 
     public ExecutionPlan plan() {
         return plan;
     }
 
+    /** Número de llegada del pedido; permite mostrar los pedidos en orden de llegada. */
     public long sequence() {
-        return sequence;
+        return queued.sequence();
     }
 
     // ---- Transiciones: solo las invoca el hilo del pedido ----
@@ -76,6 +81,11 @@ public final class OrderExecution implements Operation {
 
     // ---- Lectura: cualquier hilo ----
 
+    /** Indica si el pedido retiene ahora una unidad de {@code resource}. */
+    public boolean holds(ResourceType resource) {
+        return state.held().contains(resource);
+    }
+
     /** Foto del avance en el instante simulado {@code now}. */
     public OrderProgressSnapshot progress(Duration now) {
         State current = state; // una sola lectura volátil: todo lo que sigue es coherente
@@ -85,11 +95,11 @@ public final class OrderExecution implements Operation {
         Duration remaining = total.minus(done).isNegative() ? Duration.ZERO : total.minus(done);
 
         return new OrderProgressSnapshot(
-                order.id(),
-                order.customer().name(),
-                order.serviceLevel(),
-                order.totalItems(),
-                order.status(),
+                order().id(),
+                order().customer().name(),
+                order().serviceLevel(),
+                order().totalItems(),
+                order().status(),
                 current.stage(),
                 current.awaiting(),
                 current.held(),

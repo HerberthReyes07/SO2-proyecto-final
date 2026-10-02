@@ -4,6 +4,13 @@ import type { ResourceType } from '@/types/simulation'
 
 export type ServiceLevelId = 'EXPRESS' | 'PRIORITY' | 'STANDARD' | 'SCHEDULED' | 'ECONOMY'
 
+export type PolicyId =
+  | 'FIFO'
+  | 'STRICT_PRIORITY'
+  | 'AGING_PRIORITY'
+  | 'EARLIEST_DEADLINE_FIRST'
+  | 'SHORTEST_JOB_FIRST'
+
 export interface Product {
   id: string
   name: string
@@ -28,10 +35,18 @@ export interface ServiceLevelInfo {
   targetWaitMinutes: number
 }
 
+/** Política de atención con la explicación de su criterio de orden. */
+export interface PolicyInfo {
+  id: PolicyId
+  displayName: string
+  description: string
+}
+
 export interface CatalogResponse {
   products: Product[]
   merchandiseTypes: MerchandiseTypeInfo[]
   serviceLevels: ServiceLevelInfo[]
+  policies: PolicyInfo[]
 }
 
 export interface Customer {

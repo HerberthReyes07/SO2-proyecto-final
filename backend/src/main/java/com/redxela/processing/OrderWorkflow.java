@@ -4,6 +4,7 @@ import com.redxela.domain.OrderStatus;
 import com.redxela.domain.ResourceType;
 import com.redxela.domain.Stage;
 import com.redxela.resources.OperationPreemptedException;
+import com.redxela.resources.ResourcePool;
 import com.redxela.resources.ResourceRegistry;
 import com.redxela.sim.SimClock;
 import java.util.EnumSet;
@@ -11,8 +12,13 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Algoritmo que ejecuta un pedido: adquiere recursos, trabaja y los libera. Se ejecuta en el hilo
- * que lo invoca (el hilo del pedido) y no sabe nada de cómo se crean ni se rastrean los hilos.
+ * Lógica de recursos de un pedido: asignación del encargado y ejecución de sus etapas. No sabe
+ * nada de cómo se crean ni se rastrean los hilos.
+ *
+ * <h3>El encargado lo asigna el despachador</h3>
+ * El encargado es lo que limita cuántos pedidos están en proceso a la vez, y quién lo recibe es una
+ * decisión de planificación. Por eso el despachador lo asigna ({@link #assignWorker}) y recién
+ * entonces el pedido ejecuta sus etapas ({@link #run}); el hilo del pedido nunca compite por él.
  *
  * <h3>Modelo de retención: traspaso entre etapas</h3>
  * <ul>
@@ -35,16 +41,37 @@ public final class OrderWorkflow {
         this.clock = clock;
     }
 
+    /** Bloquea hasta que haya un encargado libre, sin tomarlo (ver {@link ResourcePool#awaitAvailableUnit}). */
+    public void awaitFreeWorker() throws InterruptedException {
+        workers().awaitAvailableUnit();
+    }
+
+    /** Asigna un encargado al pedido y lo marca como en proceso. */
+    public void assignWorker(OrderExecution execution) throws InterruptedException, OperationPreemptedException {
+        workers().acquire(execution);
+        execution.resourceAcquired(ResourceType.WAREHOUSE_WORKER);
+        execution.order().status(OrderStatus.PROCESSING);
+    }
+
+    /** Deshace {@link #assignWorker} (ej. si no se pudo arrancar el hilo del pedido). */
+    public void unassignWorker(OrderExecution execution) {
+        workers().release(execution);
+        execution.resourceReleased(ResourceType.WAREHOUSE_WORKER);
+        execution.order().status(OrderStatus.WAITING);
+    }
+
     /**
-     * Ejecuta el pedido hasta completarlo. Pase lo que pase (interrupción, expulsión o error)
-     * libera todo lo que retiene antes de salir.
+     * Ejecuta las etapas del pedido hasta completarlo. Pase lo que pase (interrupción, expulsión o
+     * error) libera todo lo que retiene, incluido el encargado, antes de salir.
+     *
+     * @throws IllegalStateException si el pedido no tiene un encargado asignado
      */
     public void run(OrderExecution execution) throws InterruptedException, OperationPreemptedException {
-        Set<ResourceType> held = EnumSet.noneOf(ResourceType.class);
+        if (!execution.holds(ResourceType.WAREHOUSE_WORKER)) {
+            throw new IllegalStateException(execution.id() + " must have a worker assigned before running");
+        }
+        Set<ResourceType> held = EnumSet.of(ResourceType.WAREHOUSE_WORKER);
         try {
-            acquire(execution, Stage.PICKING, ResourceType.WAREHOUSE_WORKER, held);
-            execution.order().status(OrderStatus.PROCESSING);
-
             List<ResourceType> previousStageResources = List.of();
             for (StagePlan stage : execution.plan().stages()) {
                 for (ResourceType resource : stage.resources()) {
@@ -59,6 +86,10 @@ public final class OrderWorkflow {
         }
         // Solo se llega aquí si no hubo excepción, y ya con todos los recursos liberados.
         execution.order().status(OrderStatus.COMPLETED);
+    }
+
+    private ResourcePool workers() {
+        return resources.pool(ResourceType.WAREHOUSE_WORKER);
     }
 
     private void acquire(OrderExecution execution, Stage stage, ResourceType type, Set<ResourceType> held)

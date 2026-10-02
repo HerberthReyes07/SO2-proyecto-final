@@ -5,7 +5,9 @@ import com.redxela.domain.Customer;
 import com.redxela.domain.Order;
 import com.redxela.domain.OrderLine;
 import com.redxela.domain.Product;
+import com.redxela.domain.QueuedOrder;
 import com.redxela.domain.ServiceLevel;
+import java.time.Duration;
 import java.util.List;
 
 /** Fábrica de pedidos de prueba con productos reales del catálogo. */
@@ -30,6 +32,17 @@ public final class TestOrders {
     /** Pedido de una sola línea. */
     public static Order order(String orderId, String productId, int units) {
         return new Order(orderId, CUSTOMER, List.of(new OrderLine(product(productId), units)));
+    }
+
+    /** El pedido tal como esperaría en la lista, llegando en el instante cero. */
+    public static QueuedOrder queued(Order order, long sequence) {
+        return new QueuedOrder(order, Duration.ZERO, sequence);
+    }
+
+    /** Un pedido de una línea en la lista de espera: nivel, producto, unidades, hora de llegada y número de llegada. */
+    public static QueuedOrder queued(
+            String orderId, ServiceLevel level, String productId, int units, Duration arrival, long sequence) {
+        return new QueuedOrder(order(orderId, level, productId, units), arrival, sequence);
     }
 
     /** Pedido de una sola línea para un cliente con el nivel de servicio indicado. */

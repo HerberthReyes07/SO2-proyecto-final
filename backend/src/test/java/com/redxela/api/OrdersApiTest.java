@@ -50,6 +50,7 @@ class OrdersApiTest {
         assertThat(response.body().get("products")).hasSizeGreaterThanOrEqualTo(15);
         assertThat(response.body().get("merchandiseTypes")).hasSize(5);
         assertThat(response.body().get("serviceLevels")).hasSize(5);
+        assertThat(response.body().get("policies")).hasSize(5);
         JsonNode express = response.body().get("serviceLevels").get(0);
         assertThat(express.get("id").asText()).isEqualTo("EXPRESS");
         assertThat(express.get("targetWaitMinutes").asLong()).isEqualTo(1);

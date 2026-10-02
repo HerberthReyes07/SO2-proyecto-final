@@ -9,6 +9,7 @@ import com.redxela.domain.Order;
 import com.redxela.domain.OrderLine;
 import com.redxela.domain.ServiceLevel;
 import com.redxela.processing.OrderProcessor;
+import com.redxela.processing.OrderScheduler;
 import com.redxela.processing.OrderWorkflow;
 import com.redxela.processing.ProcessingTimes;
 import com.redxela.resources.ResourceRegistry;
@@ -24,18 +25,41 @@ class OrderServiceTest {
 
     private final SimClock clock = new SimClock();
     private OrderProcessor processor;
+    private OrderScheduler scheduler;
     private OrderService service;
 
     @BeforeEach
     void setUp() {
-        clock.pause(); // los pedidos aceptados quedan congelados: este test solo valida la creación
-        processor = new OrderProcessor(new OrderWorkflow(new ResourceRegistry(), clock), ProcessingTimes.defaults());
-        service = new OrderService(ProductCatalog.defaultCatalog(), CustomerRegistry.withSampleCustomers(), processor);
+        // El planificador no se arranca: los pedidos aceptados se quedan en la lista de espera,
+        // que es justo lo que este test necesita observar (solo valida la creación).
+        ResourceRegistry resources = new ResourceRegistry();
+        OrderWorkflow workflow = new OrderWorkflow(resources, clock);
+        processor = new OrderProcessor(workflow, ProcessingTimes.defaults());
+        scheduler = new OrderScheduler(clock, resources, workflow, processor);
+        service = new OrderService(ProductCatalog.defaultCatalog(), CustomerRegistry.withSampleCustomers(), scheduler);
     }
 
     @AfterEach
     void tearDown() {
+        scheduler.close();
         processor.close();
+    }
+
+    @Test
+    void a_valid_order_goes_to_the_waiting_list() {
+        Order order = service.place(EXPRESS_CUSTOMER, List.of(new OrderLineRequest("P-001", 3)));
+
+        assertThat(scheduler.snapshot(clock.now()).waiting())
+                .extracting(waiting -> waiting.orderId())
+                .containsExactly(order.id());
+    }
+
+    @Test
+    void a_rejected_order_never_reaches_the_waiting_list() {
+        assertThatThrownBy(() -> service.place("CUS-999", List.of(new OrderLineRequest("P-001", 1))))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(scheduler.snapshot(clock.now()).waitingTotal()).isZero();
     }
 
     @Test

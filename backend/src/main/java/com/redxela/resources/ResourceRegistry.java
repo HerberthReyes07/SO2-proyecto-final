@@ -2,6 +2,7 @@ package com.redxela.resources;
 
 import com.redxela.domain.ResourceType;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +25,11 @@ public final class ResourceRegistry {
 
     public ResourcePool pool(ResourceType type) {
         return pools.get(type);
+    }
+
+    /** Cambia en todos los pools el criterio con que se elige a quién conceder el recurso. */
+    public void setWaitingOrder(Comparator<Operation> waitingOrder) {
+        pools.values().forEach(pool -> pool.setWaitingOrder(waitingOrder));
     }
 
     /** Fotos de todos los pools, en orden global de recursos. */

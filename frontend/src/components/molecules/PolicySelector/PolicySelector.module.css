@@ -1,0 +1,12 @@
+.selector {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 560px;
+}
+
+.description {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}

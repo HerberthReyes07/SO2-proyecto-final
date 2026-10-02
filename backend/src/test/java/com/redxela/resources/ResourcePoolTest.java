@@ -193,6 +193,46 @@ class ResourcePoolTest {
         assertThatThrownBy(() -> pool.acquire(operation)).isInstanceOf(IllegalStateException.class);
     }
 
+    @Test
+    void awaiting_an_available_unit_returns_immediately_when_there_is_one_and_takes_nothing() throws Exception {
+        ResourcePool pool = new ResourcePool(ResourceType.FORKLIFT);
+
+        pool.awaitAvailableUnit();
+
+        assertThat(pool.snapshot().holders()).isEmpty();
+    }
+
+    @Test
+    void awaiting_an_available_unit_blocks_while_the_pool_is_full_until_one_is_released() throws Exception {
+        ResourcePool pool = new ResourcePool(ResourceType.SCANNER);
+        TestOperation holder = new TestOperation("holder", 0);
+        pool.acquire(holder);
+        Future<?> waiter = executor.submit(() -> {
+            pool.awaitAvailableUnit();
+            return null;
+        });
+
+        assertThatThrownBy(() -> waiter.get(150, TimeUnit.MILLISECONDS)).isInstanceOf(java.util.concurrent.TimeoutException.class);
+
+        pool.release(holder);
+        waiter.get(5, TimeUnit.SECONDS);
+        assertThat(pool.snapshot().holders()).isEmpty(); // esperar no ocupa la unidad
+    }
+
+    @Test
+    void awaiting_an_available_unit_can_be_interrupted() throws Exception {
+        ResourcePool pool = new ResourcePool(ResourceType.SCANNER);
+        pool.acquire(new TestOperation("holder", 0));
+        Future<?> waiter = executor.submit(() -> {
+            pool.awaitAvailableUnit();
+            return null;
+        });
+
+        waiter.cancel(true);
+
+        assertThat(waiter.isCancelled()).isTrue();
+    }
+
     // ---- Utilidades de prueba ----
 
     /** Lanza un hilo que adquiere, registra el orden de concesión y libera. */

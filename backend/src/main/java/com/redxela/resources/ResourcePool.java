@@ -37,6 +37,8 @@ public final class ResourcePool {
     private final ResourceType type;
     private final int capacity;
     private final ReentrantLock lock = new ReentrantLock();
+    // Se señala cuando se libera una unidad; la usa quien necesita saber que hay capacidad (el despachador).
+    private final Condition unitAvailable = lock.newCondition();
     private final List<Waiter> waiters = new ArrayList<>();
     private final Set<Operation> holders = new LinkedHashSet<>();
     private Comparator<Operation> waitingOrder;
@@ -106,6 +108,28 @@ public final class ResourcePool {
                 throw new IllegalStateException(operation.id() + " does not hold a unit of " + type);
             }
             signalNextWaiter();
+            unitAvailable.signalAll();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Bloquea hasta que haya al menos una unidad libre, <b>sin tomarla</b>.
+     *
+     * <p>Permite al despachador esperar capacidad sin ocupar un recurso y sin comprometerse todavía
+     * con ningún pedido. Solo es fiable si quien la usa es el único que adquiere de este pool (como
+     * ocurre con los encargados de bodega); de lo contrario la unidad podría ocuparse entre la
+     * espera y el {@link #acquire}, que en ese caso simplemente esperaría un momento.
+     *
+     * @throws InterruptedException si el hilo es interrumpido mientras espera
+     */
+    public void awaitAvailableUnit() throws InterruptedException {
+        lock.lockInterruptibly();
+        try {
+            while (holders.size() >= capacity) {
+                unitAvailable.await();
+            }
         } finally {
             lock.unlock();
         }
