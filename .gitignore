@@ -1,0 +1,12 @@
+# Backend
+backend/target/
+# Frontend
+frontend/node_modules/
+# Build del frontend (se genera con `npm run build`)
+backend/src/main/resources/static/*
+!backend/src/main/resources/static/.gitkeep
+# IDE / SO
+.idea/
+.vscode/
+*.iml
+.DS_Store
