@@ -3,7 +3,7 @@ import styles from './DashboardTemplate.module.css'
 
 export interface DashboardTemplateProps {
   title: string
-  /** Indicador (ej. estado de la conexión) que se muestra a la derecha del título. */
+  /** Controles e indicadores (ej. reloj, estado de la conexión) que se muestran a la derecha del título. */
   status?: ReactNode
   children: ReactNode
 }
@@ -14,7 +14,7 @@ export function DashboardTemplate({ title, status, children }: DashboardTemplate
     <div className={styles.layout}>
       <header className={styles.header}>
         <h1 className={styles.title}>{title}</h1>
-        {status}
+        <div className={styles.status}>{status}</div>
       </header>
       <main className={styles.content}>{children}</main>
     </div>

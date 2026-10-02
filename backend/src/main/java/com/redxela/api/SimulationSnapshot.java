@@ -1,6 +1,7 @@
 package com.redxela.api;
 
 import com.redxela.resources.PoolSnapshot;
+import com.redxela.sim.ClockSnapshot;
 import java.util.List;
 
 /**
@@ -8,5 +9,5 @@ import java.util.List;
  * agreguen pedidos, inventario y estadísticas; la interfaz siempre recibe la foto entera, nunca
  * diferencias, para no depender del orden en que lleguen los mensajes.
  */
-public record SimulationSnapshot(List<PoolSnapshot> resources) {
+public record SimulationSnapshot(ClockSnapshot clock, List<PoolSnapshot> resources) {
 }

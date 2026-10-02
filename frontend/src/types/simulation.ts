@@ -18,8 +18,18 @@ export interface PoolSnapshot {
   waiting: string[]
 }
 
+/** Foto del reloj simulado. */
+export interface ClockSnapshot {
+  /** Milisegundos simulados transcurridos desde el inicio de la simulación. */
+  simulatedMillis: number
+  /** Factor de aceleración (60 = 1 s real equivale a 1 min simulado). */
+  speed: number
+  paused: boolean
+}
+
 /** Estado completo del centro de distribución. */
 export interface SimulationSnapshot {
+  clock: ClockSnapshot
   resources: PoolSnapshot[]
 }
 
