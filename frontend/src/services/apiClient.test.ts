@@ -1,4 +1,4 @@
-import { sendJson } from './apiClient'
+import { getJson, sendJson } from './apiClient'
 
 function stubFetch(response: Partial<Response> & { json: () => Promise<unknown> }) {
   const fetchMock = vi.fn().mockResolvedValue(response)
@@ -38,5 +38,19 @@ describe('sendJson', () => {
     })
 
     await expect(sendJson('/api/clock', 'PATCH', {})).rejects.toThrow('Error 502')
+  })
+})
+
+describe('getJson', () => {
+  it('returns the parsed response', async () => {
+    stubFetch({ ok: true, json: async () => [{ id: 'CUS-001' }] })
+
+    await expect(getJson('/api/customers')).resolves.toEqual([{ id: 'CUS-001' }])
+  })
+
+  it('throws the backend message when the request fails', async () => {
+    stubFetch({ ok: false, status: 404, json: async () => ({ error: 'no existe' }) })
+
+    await expect(getJson('/api/nope')).rejects.toThrow('no existe')
   })
 })

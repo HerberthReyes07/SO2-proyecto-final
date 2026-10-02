@@ -19,9 +19,10 @@ Enunciado: `reference/Proyecto Final.md`. Diseño acordado: `docs/PROPUESTA.md`.
   nombres que revelan intención, sin números mágicos (constantes con nombre o configuración).
 - Todo comentario debe explicar el *por qué* (sobre todo decisiones de sincronización); no repetir el *qué*.
 - Manejo explícito de excepciones; nunca `catch` vacío. Las interrupciones se propagan o restauran el flag.
-- **Backend:** el núcleo (`domain`, `resources`, `scheduling`, `inventory`, `sim`, `stats`) es Java plano;
-  solo `api` conoce Javalin. Dependencias hacia el dominio, nunca al revés. Estado compartido: o es inmutable,
-  o se protege con un lock documentado. Tests de concurrencia deterministas (latches, esperas con timeout),
+- **Backend:** el núcleo (`domain`, `resources`, `processing`, `orders`, `catalog`, `customers`, `scheduling`,
+  `inventory`, `sim`, `stats`) es Java plano; solo `api` conoce Javalin. `ApplicationComponents` es la raíz de
+  composición (lo único que conoce a todos). Dependencias hacia el dominio, nunca al revés. Estado compartido:
+  o es inmutable, o se protege con un lock documentado. Tests de concurrencia deterministas (latches, esperas con timeout),
   corridos varias veces para detectar intermitencias.
 - **Frontend:** Atomic Design (`atoms` → `molecules` → `organisms` → `templates` → `pages`). Un átomo no importa
   moléculas ni superiores. Los componentes de presentación no hacen fetch ni abren sockets (eso va en

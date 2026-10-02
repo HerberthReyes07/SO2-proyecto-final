@@ -1,3 +1,5 @@
+import type { ServiceLevelId } from '@/types/catalog'
+
 /** Tipos que reflejan el contrato JSON del backend (record `SimulationSnapshot` y relacionados). */
 
 export type ResourceType =
@@ -18,6 +20,29 @@ export interface PoolSnapshot {
   waiting: string[]
 }
 
+/** Etapas por las que pasa un pedido, en orden. */
+export type Stage = 'PICKING' | 'INSPECTION' | 'PACKING' | 'DISPATCH'
+
+export type OrderStatus = 'WAITING' | 'WAITING_STOCK' | 'PROCESSING' | 'COMPLETED'
+
+/** Avance de un pedido en proceso. */
+export interface OrderProgress {
+  orderId: string
+  customerName: string
+  serviceLevel: ServiceLevelId
+  totalItems: number
+  status: OrderStatus
+  stage: Stage
+  /** Recurso que el pedido está esperando, o null si no espera ninguno. */
+  awaiting: ResourceType | null
+  /** Recursos que retiene en este momento. */
+  held: ResourceType[]
+  /** Avance del trabajo, entre 0 y 1. */
+  progress: number
+  /** Tiempo simulado de trabajo restante, en ms (no incluye esperas futuras por recursos). */
+  remainingMillis: number
+}
+
 /** Foto del reloj simulado. */
 export interface ClockSnapshot {
   /** Milisegundos simulados transcurridos desde el inicio de la simulación. */
@@ -31,6 +56,8 @@ export interface ClockSnapshot {
 export interface SimulationSnapshot {
   clock: ClockSnapshot
   resources: PoolSnapshot[]
+  activeOrders: OrderProgress[]
+  completedOrders: number
 }
 
 /** Estado de la conexión en vivo con el backend. */

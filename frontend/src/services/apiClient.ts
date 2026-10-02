@@ -15,6 +15,15 @@ async function readErrorMessage(response: Response): Promise<string> {
   return `Error ${response.status}`
 }
 
+/** Pide un recurso JSON. Lanza `Error` si el servidor responde con un código de error. */
+export async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response))
+  }
+  return (await response.json()) as T
+}
+
 /** Envía `body` como JSON y devuelve la respuesta ya interpretada. Lanza `Error` si el servidor rechaza la petición. */
 export async function sendJson<T>(url: string, method: JsonMethod, body: unknown): Promise<T> {
   const response = await fetch(url, {

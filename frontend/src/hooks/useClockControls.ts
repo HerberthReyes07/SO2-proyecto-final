@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { updateClock, type ClockUpdate } from '@/services/clockApi'
+import { errorMessage } from '@/utils/errorMessage'
 
 interface ClockControls {
   /** Último error al comunicarse con el backend, o null si la última acción tuvo éxito. */
@@ -20,7 +21,7 @@ export function useClockControls(): ClockControls {
       await updateClock(update)
       setError(null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'No se pudo actualizar el reloj')
+      setError(errorMessage(cause, 'No se pudo actualizar el reloj'))
     }
   }, [])
 

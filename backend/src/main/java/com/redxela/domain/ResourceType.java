@@ -10,23 +10,30 @@ package com.redxela.domain;
 public enum ResourceType {
 
     // El encargado se asigna al admitir el pedido, por eso va primero en el orden global.
-    WAREHOUSE_WORKER(10),
-    FORKLIFT(3),
-    QUALITY_STATION(4),
-    PACKING_STATION(6),
+    WAREHOUSE_WORKER(10, Stage.PICKING),
+    FORKLIFT(3, Stage.PICKING),
+    QUALITY_STATION(4, Stage.INSPECTION),
+    PACKING_STATION(6, Stage.PACKING),
     // Escáner y área de carga: el par que se invierte entre Recepción y Despacho (deadlock demo).
-    SCANNER(1),
-    LOADING_DOCK(2);
+    SCANNER(1, Stage.DISPATCH),
+    LOADING_DOCK(2, Stage.DISPATCH);
 
     private final int capacity;
+    private final Stage stage;
 
-    ResourceType(int capacity) {
+    ResourceType(int capacity, Stage stage) {
         this.capacity = capacity;
+        this.stage = stage;
     }
 
     /** Cantidad de unidades idénticas que existen de este recurso (fijada por el enunciado). */
     public int capacity() {
         return capacity;
+    }
+
+    /** Etapa del flujo en la que se usa este recurso. */
+    public Stage stage() {
+        return stage;
     }
 
     /** Posición en el orden global de adquisición (menor = se adquiere antes). */

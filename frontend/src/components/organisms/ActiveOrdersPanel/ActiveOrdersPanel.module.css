@@ -1,0 +1,23 @@
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.title {
+  font-size: 1.125rem;
+}
+
+.empty {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.list {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  margin: 0;
+  padding: 0;
+}

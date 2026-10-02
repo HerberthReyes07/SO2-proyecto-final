@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.redxela.domain.ResourceType;
+import com.redxela.testsupport.Await;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -14,7 +15,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -72,7 +72,7 @@ class ResourcePoolTest {
         for (int i = 0; i < arrivalPriorities.length; i++) {
             tasks.add(submitWaiter(pool, new TestOperation("p" + arrivalPriorities[i], arrivalPriorities[i]), grantOrder));
             int expectedWaiting = i + 1;
-            awaitUntil(() -> pool.snapshot().waiting().size() == expectedWaiting);
+            Await.until(() -> pool.snapshot().waiting().size() == expectedWaiting);
         }
 
         pool.release(holder);
@@ -94,7 +94,7 @@ class ResourcePoolTest {
         for (String id : List.of("a", "b", "c")) {
             tasks.add(submitWaiter(pool, new TestOperation(id, 0), grantOrder));
             int expectedWaiting = tasks.size();
-            awaitUntil(() -> pool.snapshot().waiting().size() == expectedWaiting);
+            Await.until(() -> pool.snapshot().waiting().size() == expectedWaiting);
         }
 
         pool.release(holder);
@@ -114,7 +114,7 @@ class ResourcePoolTest {
             pool.acquire(victim);
             return null;
         });
-        awaitUntil(() -> pool.snapshot().waiting().contains("victim"));
+        Await.until(() -> pool.snapshot().waiting().contains("victim"));
 
         boolean found = pool.preempt(victim);
 
@@ -142,13 +142,13 @@ class ResourcePoolTest {
             pool.acquire(new TestOperation("interrupted", 0));
             return null;
         });
-        awaitUntil(() -> pool.snapshot().waiting().contains("interrupted"));
+        Await.until(() -> pool.snapshot().waiting().contains("interrupted"));
         List<String> grantOrder = Collections.synchronizedList(new ArrayList<>());
         Future<?> next = submitWaiter(pool, new TestOperation("next", 0), grantOrder);
-        awaitUntil(() -> pool.snapshot().waiting().contains("next"));
+        Await.until(() -> pool.snapshot().waiting().contains("next"));
 
         interrupted.cancel(true);
-        awaitUntil(() -> !pool.snapshot().waiting().contains("interrupted"));
+        Await.until(() -> !pool.snapshot().waiting().contains("interrupted"));
         pool.release(holder);
         next.get();
 
@@ -163,12 +163,12 @@ class ResourcePoolTest {
             pool.acquire(new TestOperation("late-priority-2", 2));
             return null;
         });
-        awaitUntil(() -> pool.snapshot().waiting().size() == 1);
+        Await.until(() -> pool.snapshot().waiting().size() == 1);
         executor.submit(() -> {
             pool.acquire(new TestOperation("later-priority-1", 1));
             return null;
         });
-        awaitUntil(() -> pool.snapshot().waiting().size() == 2);
+        Await.until(() -> pool.snapshot().waiting().size() == 2);
         assertThat(pool.snapshot().waiting()).containsExactly("late-priority-2", "later-priority-1");
 
         pool.setWaitingOrder(BY_PRIORITY);
@@ -203,17 +203,6 @@ class ResourcePoolTest {
             pool.release(operation);
             return null;
         });
-    }
-
-    /** Espera activa con tope de tiempo; evita {@code Thread.sleep} arbitrarios en las pruebas. */
-    private static void awaitUntil(BooleanSupplier condition) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (!condition.getAsBoolean()) {
-            if (System.nanoTime() > deadline) {
-                throw new AssertionError("Condition not met within 5 seconds");
-            }
-            Thread.sleep(2);
-        }
     }
 
     /** Operación de prueba con prioridad numérica (menor = más urgente). */

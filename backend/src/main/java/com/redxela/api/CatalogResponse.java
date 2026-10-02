@@ -1,0 +1,18 @@
+package com.redxela.api;
+
+import com.redxela.domain.Product;
+import java.util.List;
+
+/**
+ * Datos de referencia que la interfaz necesita para armar formularios. Se piden una sola vez
+ * porque no cambian durante la ejecución.
+ *
+ * @param products         productos del catálogo
+ * @param merchandiseTypes tipos de mercancía con su descripción y receta de recursos
+ * @param serviceLevels    niveles de servicio con su tiempo objetivo
+ */
+public record CatalogResponse(
+        List<Product> products,
+        List<MerchandiseTypeInfo> merchandiseTypes,
+        List<ServiceLevelInfo> serviceLevels) {
+}

@@ -40,13 +40,21 @@ Cada política es un `Comparator`, intercambiable en caliente (patrón Strategy)
 - **Colas de los pools:** cada pool ordena a sus esperas con el mismo comparador; sin esto un Exprés esperaría detrás de un Económico dentro de la estación.
 - **Benchmark:** mismo generador con semilla fija, reloj acelerado, una corrida por política. Métricas: espera promedio por nivel, % que cumple su objetivo, espera máxima, throughput y utilización de recursos.
 
-## 4. Tipos de mercancía
+## 4. Tipos de mercancía y flujo de un pedido
 
-La receta es la lista ordenada de recursos que se adquieren incrementalmente y se retienen mientras se trabaja
-(origen del *hold-and-wait*). El encargado de bodega se asigna al admitir el pedido.
-Trabajo por etapa = `unidades × tiempo por unidad` (configurable).
+Todo pedido recorre cuatro **etapas** en orden: picking → inspección → empaque → despacho. Cada recurso pertenece
+a una etapa (`ResourceType.stage()`), y el orden de las etapas coincide con el orden global de recursos.
 
-| Tipo | Recursos (tras el encargado) |
+| Etapa | Recursos |
+|---|---|
+| Picking | Encargado de bodega (siempre) + montacargas (si la mercancía lo requiere) |
+| Inspección | Estación de control de calidad |
+| Empaque | Estación de empaque |
+| Despacho | Escáner + área de carga |
+
+La **receta** de un tipo de mercancía es la lista de recursos que usa (sin contar al encargado):
+
+| Tipo | Recursos |
 |---|---|
 | Estándar | EMP → ESC → CAR |
 | Frágil | QC → EMP → ESC → CAR |
@@ -59,6 +67,27 @@ Pesado y Voluminoso se disputan MON y EMP (escenario de contención exigido).
 
 El tipo pertenece al producto. Un pedido multi-línea usa la **unión** de las recetas de sus líneas, ordenada
 con el orden global; como todas las recetas son subsecuencias de ese orden, la unión queda bien definida.
+
+### Modelo de retención: traspaso entre etapas (`OrderWorkflow`)
+
+1. El **encargado** se retiene durante todo el pedido (admisión).
+2. Dentro de una etapa, los recursos se piden en orden global y se retienen mientras se espera el siguiente
+   (*hold-and-wait*, una de las cuatro condiciones de Coffman).
+3. Al pasar de etapa se adquieren primero los recursos de la siguiente y **solo entonces** se sueltan los de la
+   anterior (traspaso). La mercancía no puede quedar "en el aire": el montacargas no se libera hasta que la
+   estación de empaque aceptó el pedido.
+4. Pase lo que pase (interrupción, expulsión, error) un `finally` libera todo lo retenido.
+
+Entre pedidos nunca hay espera circular, porque ninguno pide un recurso de rank menor al que ya retiene.
+El deadlock de la demo ocurre entre áreas (Recepción vs Despacho, ver sección 7).
+
+**Trabajo por etapa** = `unidades × tiempo por unidad de la etapa` (`ProcessingTimes`, configurable). Valores por
+defecto (segundos simulados por unidad): picking 8, inspección 15, empaque 20, despacho 5. A ×60, un pedido
+estándar de 10 unidades tarda ~5,5 s reales.
+
+**Estado observable (`OrderExecution`):** un registro inmutable en un campo `volatile`. Solo el hilo del pedido
+lo reemplaza; el hilo que arma los snapshots lee una foto coherente sin locks. El progreso se calcula a partir del
+reloj simulado, así que se congela al pausar.
 
 ## 5. Recepción → Inventario
 
@@ -106,7 +135,7 @@ Dos camiones ocupan las 2 áreas de carga y un despacho sostiene el escáner.
 | Hilo | Cantidad | Mecanismo clave |
 |---|---|---|
 | Despachador | 1 | Semáforo de encargados + cola de prioridad |
-| Operación de pedido | ≤ 10 | `ResourcePool` (`ReentrantLock` + `Condition`) |
+| Operación de pedido | uno por pedido (paso 3: ≤ 10 en proceso) | `ResourcePool` (`ReentrantLock` + `Condition`) |
 | Operación de recepción | pocas | Pools + productor del buffer |
 | Consumidor de Inventario | 1 | Buffer acotado + `ReadWriteLock` |
 | Generadores | 2 | `SimClock` |
