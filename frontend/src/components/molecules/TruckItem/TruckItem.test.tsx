@@ -10,6 +10,7 @@ const UNLOADING: Truck = {
   awaiting: null,
   held: ['SCANNER', 'LOADING_DOCK'],
   progress: 0.25,
+  retries: 0,
 }
 
 function renderTruck(truck: Truck) {
@@ -42,6 +43,13 @@ describe('TruckItem', () => {
 
     expect(screen.getByText('Esperando: Sistema de escaneo')).toBeInTheDocument()
     expect(screen.getByText('Esperando escáner o andén')).toBeInTheDocument()
+  })
+
+  it('shows a truck that was expelled to undo a deadlock and is waiting to retry', () => {
+    renderTruck({ ...UNLOADING, phase: 'RETRYING', held: [], progress: 0, retries: 1 })
+
+    expect(screen.getByText('Expulsado: esperando para reintentar')).toBeInTheDocument()
+    expect(screen.getByText('Reintento 1')).toBeInTheDocument()
   })
 
   it('shows that a truck that already released its resources is only reporting to inventory', () => {

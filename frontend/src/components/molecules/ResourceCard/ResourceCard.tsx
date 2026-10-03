@@ -4,6 +4,9 @@ import { formatPercent } from '@/utils/formatStats'
 import { getResourceStatus } from '@/utils/resourceStatus'
 import styles from './ResourceCard.module.css'
 
+/** Cuántas operaciones en espera se nombran en la tarjeta; el resto se resume como "+N más". */
+const MAX_WAITING_SHOWN = 6
+
 export interface ResourceCardProps {
   label: string
   capacity: number
@@ -36,6 +39,17 @@ export function ResourceCard({ label, capacity, holders, waiting, utilization }:
           {holders.map((id) => (
             <li key={id} className={styles.holder}>{id}</li>
           ))}
+        </ul>
+      )}
+
+      {waiting.length > 0 && (
+        <ul className={styles.holders} aria-label={`Operaciones esperando ${label}`}>
+          {waiting.slice(0, MAX_WAITING_SHOWN).map((id) => (
+            <li key={id} className={`${styles.holder} ${styles.waitingChip}`}>{id}</li>
+          ))}
+          {waiting.length > MAX_WAITING_SHOWN && (
+            <li className={`${styles.holder} ${styles.waitingChip}`}>+{waiting.length - MAX_WAITING_SHOWN} más</li>
+          )}
         </ul>
       )}
     </article>

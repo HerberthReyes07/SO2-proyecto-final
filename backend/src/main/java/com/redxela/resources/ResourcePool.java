@@ -207,6 +207,17 @@ public final class ResourcePool {
         }
     }
 
+    /** Las operaciones que retienen y esperan este recurso, tomadas bajo el lock del pool. */
+    public PoolOperations operations() {
+        lock.lock();
+        try {
+            List<Operation> waitingInOrder = waiters.stream().sorted(turnOrder()).map(waiter -> waiter.operation).toList();
+            return new PoolOperations(type, capacity, List.copyOf(holders), waitingInOrder);
+        } finally {
+            lock.unlock();
+        }
+    }
+
     /** Foto consistente del estado actual del pool. */
     public PoolSnapshot snapshot() {
         lock.lock();

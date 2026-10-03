@@ -12,11 +12,13 @@ import java.util.List;
  * @param serviceLevels    niveles de servicio con su tiempo objetivo
  * @param policies         políticas de atención disponibles, con la explicación de su criterio
  * @param placementStrategies estrategias para elegir ubicaciones en el almacén, con su explicación
+ * @param preventionModes  estrategias de prevención de deadlock, con su explicación
  */
 public record CatalogResponse(
         List<Product> products,
         List<MerchandiseTypeInfo> merchandiseTypes,
         List<ServiceLevelInfo> serviceLevels,
-        List<PolicyInfo> policies,
-        List<StrategyInfo> placementStrategies) {
+        List<OptionInfo> policies,
+        List<OptionInfo> placementStrategies,
+        List<OptionInfo> preventionModes) {
 }

@@ -36,3 +36,10 @@
   font-family: ui-monospace, monospace;
   font-size: 0.75rem;
 }
+
+/* Las que esperan se ven con borde punteado: no tienen el recurso todavía. */
+.waitingChip {
+  border: 1px dashed var(--color-warning);
+  background: transparent;
+  color: var(--color-warning);
+}

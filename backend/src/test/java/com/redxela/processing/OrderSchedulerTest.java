@@ -6,6 +6,7 @@ import static com.redxela.testsupport.TestOrders.STANDARD_PRODUCT;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.redxela.catalog.ProductCatalog;
+import com.redxela.domain.QueuedOrder;
 import com.redxela.domain.ServiceLevel;
 import com.redxela.inventory.Inventory;
 import com.redxela.resources.ResourceRegistry;
@@ -73,6 +74,18 @@ class OrderSchedulerTest {
         assertThat(waiting.targetWaitMillis()).isEqualTo(Duration.ofMinutes(1).toMillis());
         assertThat(waiting.customerName()).isNotBlank();
         assertThat(waiting.totalItems()).isEqualTo(5);
+    }
+
+    @Test
+    void a_requeued_order_keeps_its_original_arrival_and_shows_one_retry() {
+        QueuedOrder expelled = new QueuedOrder(TestOrders.order("O-1", ECONOMY, STANDARD_PRODUCT, 3), Duration.ofMinutes(2), 5);
+        Duration now = Duration.ofMinutes(12);
+
+        scheduler.requeue(expelled);
+
+        WaitingOrderSnapshot waiting = scheduler.snapshot(now).waiting().get(0);
+        assertThat(waiting.retries()).isEqualTo(1);
+        assertThat(waiting.waitedMillis()).isEqualTo(Duration.ofMinutes(10).toMillis()); // espera desde su llegada original
     }
 
     @Test

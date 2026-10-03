@@ -13,6 +13,7 @@ const order = (orderId: string): OrderProgress => ({
   held: ['WAREHOUSE_WORKER'],
   progress: 0.1,
   remainingMillis: 60_000,
+  retries: 0,
 })
 
 describe('ActiveOrdersPanel', () => {

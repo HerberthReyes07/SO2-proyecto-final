@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.redxela.catalog.ProductCatalog;
+import com.redxela.deadlock.AcquisitionPolicy;
+import com.redxela.deadlock.PreventionMode;
 import com.redxela.domain.ResourceType;
 import com.redxela.inventory.ReceptionBuffer;
 import com.redxela.inventory.ReceptionMessage;
@@ -11,6 +13,7 @@ import com.redxela.resources.PoolSnapshot;
 import com.redxela.resources.ResourceRegistry;
 import com.redxela.sim.SimClock;
 import com.redxela.testsupport.Await;
+import com.redxela.testsupport.FakeOperation;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,16 +27,19 @@ import org.junit.jupiter.api.Timeout;
 class ReceptionServiceTest {
 
     private static final int BUFFER_CAPACITY = 2;
+    // Sin maniobra: estos tests miden la descarga y los recursos, no el desfase que hace posible el deadlock.
+    private static final ReceptionTimes TIMES = new ReceptionTimes(Duration.ofSeconds(1), Duration.ZERO, Duration.ofMinutes(2));
 
     private final ResourceRegistry registry = new ResourceRegistry();
     private final SimClock clock = new SimClock();
     private final ReceptionBuffer buffer = new ReceptionBuffer(BUFFER_CAPACITY);
+    private final AcquisitionPolicy policy = new AcquisitionPolicy();
     private ReceptionService service;
 
     @BeforeEach
     void setUp() {
         clock.setSpeed(SimClock.MAX_SPEED);
-        service = new ReceptionService(registry, clock, buffer, ProductCatalog.defaultCatalog());
+        service = new ReceptionService(registry, clock, buffer, ProductCatalog.defaultCatalog(), policy, TIMES);
     }
 
     @AfterEach
@@ -146,6 +152,67 @@ class ReceptionServiceTest {
     }
 
     @Test
+    void under_the_natural_order_a_truck_holds_the_dock_while_it_waits_for_the_scanner() throws Exception {
+        policy.setMode(PreventionMode.NONE);
+        registry.pool(ResourceType.SCANNER).acquire(new FakeOperation("busy-scanner"));
+
+        service.registerArrival("P-001", 5, 1);
+
+        Await.until("truck waiting for the scanner", () -> trucks().stream().anyMatch(truck -> truck.awaiting() == ResourceType.SCANNER));
+        assertThat(trucks().get(0).held()).containsExactly(ResourceType.LOADING_DOCK); // retiene el andén y espera el escáner
+    }
+
+    @Test
+    void under_the_global_order_a_truck_waits_for_the_scanner_without_holding_anything() throws Exception {
+        policy.setMode(PreventionMode.GLOBAL_ORDER);
+        registry.pool(ResourceType.SCANNER).acquire(new FakeOperation("busy-scanner"));
+
+        service.registerArrival("P-001", 5, 1);
+
+        Await.until("truck waiting for the scanner", () -> trucks().stream().anyMatch(truck -> truck.awaiting() == ResourceType.SCANNER));
+        assertThat(trucks().get(0).held()).isEmpty(); // pide primero el escáner: no retiene nada mientras espera
+        assertThat(holdersOf(ResourceType.LOADING_DOCK)).isEmpty();
+    }
+
+    @Test
+    void after_docking_the_truck_maneuvers_holding_the_dock_before_asking_for_the_scanner() throws Exception {
+        service.close();
+        service = new ReceptionService(registry, clock, buffer, ProductCatalog.defaultCatalog(), policy,
+                new ReceptionTimes(Duration.ofSeconds(1), Duration.ofSeconds(10), Duration.ofMinutes(2)));
+        policy.setMode(PreventionMode.NONE);
+        clock.pause(); // la maniobra queda congelada
+
+        service.registerArrival("P-001", 5, 1);
+
+        Await.until("maneuvering", () -> trucks().stream().anyMatch(truck -> truck.phase() == TruckPhase.MANEUVERING));
+        TruckProgressSnapshot truck = trucks().get(0);
+        assertThat(truck.held()).containsExactly(ResourceType.LOADING_DOCK);
+        assertThat(truck.awaiting()).isNull(); // todavía no pidió el escáner: esa es la ventana en la que otro puede tomarlo
+        assertThat(holdersOf(ResourceType.SCANNER)).isEmpty();
+    }
+
+    @Test
+    void a_truck_expelled_while_waiting_releases_what_it_holds_and_retries_until_it_finishes() throws Exception {
+        policy.setMode(PreventionMode.NONE);
+        FakeOperation busyScanner = new FakeOperation("busy-scanner");
+        registry.pool(ResourceType.SCANNER).acquire(busyScanner);
+        service.registerArrival("P-001", 5, 1);
+        Await.until("truck waiting for the scanner", () -> trucks().stream().anyMatch(truck -> truck.awaiting() == ResourceType.SCANNER));
+
+        // Lo que hace el detector al resolver un deadlock: expulsar a la operación que espera.
+        com.redxela.resources.Operation victim = registry.pool(ResourceType.SCANNER).operations().waiting().get(0);
+        assertThat(registry.pool(ResourceType.SCANNER).preempt(victim)).isTrue();
+
+        // Soltó el andén, esperó y volvió a la fila: otra vez con el andén en la mano esperando el escáner, pero con 1 reintento.
+        Await.until("retried", () -> trucks().stream().anyMatch(truck ->
+                truck.retries() == 1 && truck.awaiting() == ResourceType.SCANNER && truck.held().equals(List.of(ResourceType.LOADING_DOCK))));
+
+        registry.pool(ResourceType.SCANNER).release(busyScanner);
+        assertThat(buffer.take().truckId()).isEqualTo("TRK-0001"); // al final termina y reporta, sin perderse
+        Await.until("truck gone and resources free", () -> trucks().isEmpty() && nothingIsHeld());
+    }
+
+    @Test
     void closing_the_service_releases_the_resources_of_trucks_in_the_middle_of_unloading() throws Exception {
         clock.pause();
         service.registerArrival("P-001", 10, 1);
@@ -163,7 +230,7 @@ class ReceptionServiceTest {
         service.registerArrival("P-001", 100, 1);
         Await.until("unloading", () -> trucks().stream().anyMatch(truck -> truck.phase() == TruckPhase.UNLOADING));
 
-        Duration halfway = clock.now().plus(ReceptionService.UNLOAD_TIME_PER_UNIT.multipliedBy(50));
+        Duration halfway = clock.now().plus(TIMES.unloadPerUnit().multipliedBy(50));
         TruckProgressSnapshot truck = service.snapshot(halfway).trucks().get(0);
 
         assertThat(truck.progress()).isBetween(0.49, 0.51);

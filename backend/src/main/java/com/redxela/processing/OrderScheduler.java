@@ -63,6 +63,14 @@ public final class OrderScheduler implements AutoCloseable {
         waitingList.reevaluate();
     }
 
+    /**
+     * Devuelve a la lista un pedido que fue expulsado para deshacer un deadlock. Conserva su hora y
+     * número de llegada, de modo que la política lo trata como al pedido que es, y suma un reintento.
+     */
+    public void requeue(QueuedOrder expelled) {
+        waitingList.add(expelled.withRetry());
+    }
+
     public SchedulingPolicy policy() {
         return waitingList.policy();
     }
@@ -98,7 +106,8 @@ public final class OrderScheduler implements AutoCloseable {
                 order.totalItems(),
                 queued.waitedAt(now).toMillis(),
                 order.serviceLevel().targetWait().toMillis(),
-                inventory.missingFor(order));
+                inventory.missingFor(order),
+                queued.retries());
     }
 
     /** Detiene el hilo despachador. */

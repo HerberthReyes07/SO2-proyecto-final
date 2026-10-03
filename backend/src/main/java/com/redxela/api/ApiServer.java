@@ -1,5 +1,6 @@
 package com.redxela.api;
 
+import com.redxela.deadlock.StateConflictException;
 import io.javalin.Javalin;
 import io.javalin.http.HttpStatus;
 import io.javalin.http.staticfiles.Location;
@@ -26,6 +27,10 @@ public final class ApiServer implements AutoCloseable {
             ws.onClose(broadcaster::unregister);
             ws.onError(broadcaster::unregister);
         });
+
+        // La acción pedida ya no corresponde al estado del sistema (ej. resolver un deadlock que ya no existe): 409.
+        app.exception(StateConflictException.class, (e, ctx) ->
+                ctx.status(HttpStatus.CONFLICT).json(Map.of("error", e.getMessage())));
 
         // El núcleo valida sus argumentos con IllegalArgumentException; para el cliente eso es un 400.
         app.exception(IllegalArgumentException.class, (e, ctx) ->

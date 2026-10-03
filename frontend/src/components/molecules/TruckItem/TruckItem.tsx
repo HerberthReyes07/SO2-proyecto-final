@@ -23,7 +23,10 @@ export function TruckItem({ truck, productName }: TruckItemProps) {
         <span className={styles.product}>
           {productName} × {truck.quantity}
         </span>
-        <Badge tone={truck.phase === 'REPORTING' ? 'warning' : 'neutral'}>{TRUCK_PHASE_LABELS[truck.phase]}</Badge>
+        <Badge tone={truck.phase === 'REPORTING' || truck.phase === 'RETRYING' ? 'warning' : 'neutral'}>
+          {TRUCK_PHASE_LABELS[truck.phase]}
+        </Badge>
+        {truck.retries > 0 && <Badge tone="warning">Reintento {truck.retries}</Badge>}
       </header>
       <ProgressBar value={percent} max={PERCENT} label={`Descarga de ${truck.truckId}`} />
       <div className={styles.resources}>

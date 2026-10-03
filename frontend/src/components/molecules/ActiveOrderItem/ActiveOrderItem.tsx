@@ -24,6 +24,7 @@ export function ActiveOrderItem({ order, serviceLevelLabel }: ActiveOrderItemPro
         <span className={styles.id}>{order.orderId}</span>
         <span className={styles.customer}>{order.customerName}</span>
         <Badge>{serviceLevelLabel}</Badge>
+        {order.retries > 0 && <Badge tone="warning">Reintento {order.retries}</Badge>}
       </header>
 
       <p className={styles.meta}>

@@ -11,6 +11,7 @@ const order = (overrides: Partial<WaitingOrder> = {}): WaitingOrder => ({
   waitedMillis: 4 * MINUTE,
   targetWaitMillis: 10 * MINUTE,
   missingStock: [],
+  retries: 0,
   ...overrides,
 })
 

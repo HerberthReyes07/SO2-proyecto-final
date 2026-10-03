@@ -243,15 +243,77 @@ Asignación **no contigua**, análoga a la paginación de memoria:
 
 ## 7. Deadlock
 
-Escenario natural y realista entre áreas: **Recepción** pide CAR → ESC y **Despacho** pide ESC → CAR.
-Dos camiones ocupan las 2 áreas de carga y un despacho sostiene el escáner.
+### El escenario
 
-- **Modos:** sin prevención (demo), orden global de recursos (rompe la espera circular) y, opcional, todo-o-nada (rompe *hold-and-wait*).
-- **Detección:** hilo detector cada ~500 ms sobre un snapshot consistente. Como los pools tienen varias unidades,
-  se usa el algoritmo de detección con matrices Asignación/Solicitud/Disponible, no un simple grafo de espera.
-- **Interfaz:** recursos involucrados, quién retiene y quién espera qué, las 4 condiciones de Coffman y una explicación.
-- **Resolución manual:** el usuario elige qué operación continúa; la otra recibe `OperationPreemptedException`,
-  libera todo y vuelve a la lista de espera (`retries++`, conserva su hora de llegada).
+Un **pedido en despacho** pide escáner → área de carga (orden global de recursos), pero un **camión** pide
+área de carga → escáner: primero llega y se acomoda en el andén, después registra la mercadería, que es justo el
+orden inverso. Con dos camiones (que ocupan las 2 áreas de carga) y un pedido que ya tiene el escáner, queda una espera
+circular. Los tres están bloqueados; el pedido y un camión son "las dos operaciones en conflicto".
+
+Para que ocurra hace falta que el pedido tome el escáner *mientras* los camiones ya tienen los andenes pero aún no lo
+han pedido. Por eso el camión hace una **maniobra** de 10 s simulados justo después de tomar el andén (acomodarse), y el
+**escenario de demostración** registra el pedido y, `T − maniobra/2` después (T = tiempo que el pedido tarda en llegar a
+despacho), los dos camiones. Todo es en tiempo simulado, así que funciona igual a cualquier velocidad. Exige el sistema
+en reposo (sin generador, pedidos ni camiones en curso) y devuelve 409 si no lo está.
+
+### ¿Puede ocurrir sin el escenario? Sí, pero depende de cómo lleguen los camiones
+
+El deadlock también aparece solo con carga (se reprodujo con prevención desactivada, generador saturado y camiones
+llegando de a uno a intervalos aleatorios: a los 7 s reales, con 6 operaciones bloqueadas). Pero **no con una ráfaga de camiones
+ya encolados**: los camiones pasan antes que los pedidos en la fila del escáner y salen uno tras otro, así que el escáner
+nunca queda libre para que un pedido lo tome mientras los camiones ya tienen los andenes. El deadlock necesita ese hueco.
+Para provocarlo a mano de forma confiable: velocidad ×1, un pedido de 1 unidad de un producto perecedero y, ~15 s después,
+una llegada de 2 camiones (detectado a los ~26 s). La interfaz lo explica en el panel.
+
+El escenario de demostración informa su estado (en curso, terminado sin deadlock, terminado con deadlock resuelto) porque a
+velocidad normal dura un par de segundos y, con prevención, "no pasa nada" visible; el panel muestra además el escáner y
+las áreas de carga en vivo con quién retiene y quién espera cada uno.
+
+### Detección (`DeadlockAnalyzer`, `DeadlockDetector`)
+
+- **Algoritmo para recursos de varias instancias** (Silberschatz 7.6.2), no un simple grafo de espera. Con varias unidades,
+  un ciclo es solo condición *necesaria* (otra unidad libre lo rompería); hay un test que lo demuestra. Estructuras:
+  *Asignación* (qué retiene cada operación), *Solicitud* (qué espera) y *Disponible*. Con `trabajo = Disponible` se va
+  "terminando" a toda operación que no retiene nada o cuya solicitud cabe en `trabajo`, y al terminar devuelve lo que
+  retenía; las que no pueden terminar están en deadlock.
+- Es una **función pura** (recibe datos, devuelve el resultado), por eso se prueba con total precisión y sin hilos.
+- **Confirmación por estabilidad.** Cada pool tiene su propio lock: leer todos no da una foto atómica y podría armar un
+  ciclo que nunca existió. Un deadlock real es estable (nadie del conjunto avanza), así que se declara solo si el mismo
+  conjunto aparece en **dos revisiones consecutivas** (cada 500 ms). Hay una prueba de estrés con 8 hilos compitiendo
+  bajo el orden global y el detector escaneando sin parar, que no debe confirmar nada.
+- Los recursos "involucrados" son los **disputados**, los que las operaciones bloqueadas esperan; el encargado de
+  bodega, que todo pedido retiene pero nadie espera, no forma parte del conflicto.
+- **Par en conflicto:** primero dos operaciones que se esperen mutuamente (la forma clásica); si no hay, el primer tramo
+  del ciclo más corto. Siempre existe un ciclo entre las bloqueadas.
+
+### Las cuatro condiciones de Coffman
+
+Un deadlock exige las cuatro a la vez, y la interfaz las muestra en cada caso: **exclusión mutua** (cada unidad de escáner o
+andén la usa una sola operación), **retención y espera** (cada una retiene un recurso mientras espera otro),
+**sin apropiación** (nadie puede quitarle un recurso a otra) y **espera circular** (redactada con las operaciones reales).
+
+### Prevención (`PreventionMode`, `AcquisitionPolicy`)
+
+Se ataca la condición que se puede evitar: la **espera circular**. Con *orden global de recursos* todos piden en el mismo
+orden (escáner antes que área de carga), así que un ciclo es imposible: un ciclo exigiría que alguien espere un
+recurso de menor rank mientras retiene uno de mayor. Implementarlo es ordenar las solicitudes del camión por rank. El
+costo es real: el camión retiene el escáner mientras maniobra, lo que reduce la concurrencia. **Está activo por defecto**,
+para que el sistema no pueda congelarse por accidente; "sin prevención" es el modo que permite el deadlock deliberado.
+"Repetir con orden global" corre el mismo escenario con la prevención activa y demuestra que no ocurre.
+
+### Resolución manual: recuperación por apropiación
+
+El usuario elige cuál de las dos operaciones continúa; la otra es **expulsada** (`ResourcePool.preempt`): su hilo recibe
+`OperationPreemptedException`, libera todo lo que retiene y "vuelve a la lista de espera".
+
+- **Pedido:** libera todo (incluido el encargado), devuelve su stock reservado (`onAborted`) y vuelve a la lista de espera
+  con el **mismo `QueuedOrder`**: conserva su hora y número de llegada (no se lo "castiga" por un deadlock que no causó) y
+  suma un reintento. El despachador lo vuelve a admitir según la política y vuelve a reservar. Sin doble descuento.
+- **Camión:** libera todo y espera un tiempo (2 min simulados) antes de reintentar. Si reintentara de inmediato,
+  como los camiones pasan antes que los pedidos en las filas, recuperaría el recurso que acaba de soltar y volvería a formar el
+  deadlock.
+- Si el deadlock se deshizo solo antes de decidir, o el usuario elige una operación ajena al conflicto, la API responde
+  409 o 400 y no cambia nada. Después de resolver, el detector vuelve a evaluar: si queda otro ciclo, se presenta el siguiente.
 
 ## 8. Arquitectura
 
@@ -272,7 +334,7 @@ Dos camiones ocupan las 2 áreas de carga y un despacho sostiene el escáner.
 | Camión de recepción | uno por camión (tope 100) | Pools + productor del buffer |
 | Consumidor de Inventario | 1 | Buffer acotado (`Lock` + 2 `Condition`) + `ReadWriteLock` |
 | Generador de pedidos | 1 | `SimClock` + `Condition` de configuración |
-| Detector de deadlock | 1 | Snapshot bajo el lock del gestor |
+| Detector de deadlock | 1 | Lecturas por pool + confirmación por estabilidad |
 | Broadcaster de snapshots | 1 | Lecturas con locks breves |
 
 Los pools son monitores propios y no `Semaphore` porque hay que saber quién retiene y quién espera,

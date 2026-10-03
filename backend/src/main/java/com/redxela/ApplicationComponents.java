@@ -5,6 +5,7 @@ import com.redxela.api.ApiServer;
 import com.redxela.api.CatalogRoutes;
 import com.redxela.api.ClockRoutes;
 import com.redxela.api.CustomerRoutes;
+import com.redxela.api.DeadlockRoutes;
 import com.redxela.api.GeneratorRoutes;
 import com.redxela.api.OrderRoutes;
 import com.redxela.api.ReceptionRoutes;
@@ -14,6 +15,9 @@ import com.redxela.api.SnapshotBroadcaster;
 import com.redxela.api.StatsRoutes;
 import com.redxela.api.WarehouseRoutes;
 import com.redxela.catalog.ProductCatalog;
+import com.redxela.deadlock.AcquisitionPolicy;
+import com.redxela.deadlock.DeadlockDetector;
+import com.redxela.demo.DeadlockScenario;
 import com.redxela.customers.CustomerRegistry;
 import com.redxela.generator.OrderGenerator;
 import com.redxela.generator.WorkloadProfile;
@@ -29,6 +33,7 @@ import com.redxela.processing.OrderWorkflow;
 import com.redxela.processing.ProcessingTimes;
 import com.redxela.processing.StockHandling;
 import com.redxela.reception.ReceptionService;
+import com.redxela.reception.ReceptionTimes;
 import com.redxela.resources.ResourceRegistry;
 import com.redxela.sim.SimClock;
 import com.redxela.stats.SimulationStatistics;
@@ -54,6 +59,8 @@ public final class ApplicationComponents implements AutoCloseable {
      * Con el almacén por defecto ocupan 112 de las 240 ubicaciones.
      */
     private static final int INITIAL_UNITS_PER_PRODUCT = 300;
+    /** Cada cuánto el detector revisa si hay deadlock (tiempo real: un deadlock no depende del reloj simulado). */
+    private static final Duration DEADLOCK_SCAN_PERIOD = Duration.ofMillis(500);
     /** Mensajes que caben entre Recepción e Inventario antes de que Recepción deba esperar. */
     private static final int RECEPTION_BUFFER_CAPACITY = 10;
 
@@ -63,6 +70,7 @@ public final class ApplicationComponents implements AutoCloseable {
     private final OrderGenerator generator;
     private final ReceptionService reception;
     private final InventoryWorker inventoryWorker;
+    private final DeadlockDetector deadlockDetector;
     private final SnapshotBroadcaster broadcaster;
     private final ApiServer server;
 
@@ -83,19 +91,29 @@ public final class ApplicationComponents implements AutoCloseable {
         SimulationStatistics statistics = new SimulationStatistics(clock, resources);
         orderProcessor.addListener(OrderLifecycleListener.onCompleted(statistics::record));
         orderProcessor.addListener(new StockHandling(inventory, warehouse));
+        orderProcessor.onExpelled(scheduler::requeue); // un pedido expulsado por un deadlock vuelve a la lista de espera
         this.generator = new OrderGenerator(
                 clock, WorkloadProfile.defaults(), catalog, customers::all, orderService::place);
 
         // Recepción e Inventario solo se comunican por este buffer; cuando Inventario suma stock,
         // el planificador reevalúa los pedidos que lo esperaban.
         ReceptionBuffer receptionBuffer = new ReceptionBuffer(RECEPTION_BUFFER_CAPACITY);
-        this.reception = new ReceptionService(resources, clock, receptionBuffer, catalog);
+        AcquisitionPolicy acquisitionPolicy = new AcquisitionPolicy();
+        this.deadlockDetector = new DeadlockDetector(resources, clock, acquisitionPolicy, DEADLOCK_SCAN_PERIOD);
+        this.reception = new ReceptionService(
+                resources, clock, receptionBuffer, catalog, acquisitionPolicy, ReceptionTimes.defaults());
         this.inventoryWorker = new InventoryWorker(
                 receptionBuffer, inventory, warehouse, clock, InventoryTimes.defaults(),
                 productId -> scheduler.stockChanged());
 
+        DeadlockScenario deadlockScenario = new DeadlockScenario(clock, acquisitionPolicy, orderService, reception,
+                inventory, customers, ProcessingTimes.defaults(), ReceptionTimes.defaults(),
+                () -> isIdle(clock, orderProcessor, scheduler, reception, generator),
+                () -> workFinished(clock, orderProcessor, scheduler, reception),
+                () -> deadlockDetector.snapshot().detected());
         SimulationSnapshotFactory snapshots = new SimulationSnapshotFactory(clock, resources, scheduler,
-                orderProcessor, generator, statistics, inventory, receptionBuffer, inventoryWorker, reception, warehouse);
+                orderProcessor, generator, statistics, inventory, receptionBuffer, inventoryWorker, reception, warehouse,
+                deadlockDetector, deadlockScenario);
         this.broadcaster = new SnapshotBroadcaster(snapshots::create);
         List<ApiRoutes> routes = List.of(
                 new ClockRoutes(clock),
@@ -106,8 +124,24 @@ public final class ApplicationComponents implements AutoCloseable {
                 new GeneratorRoutes(generator),
                 new StatsRoutes(statistics),
                 new ReceptionRoutes(reception),
-                new WarehouseRoutes(warehouse));
+                new WarehouseRoutes(warehouse),
+                new DeadlockRoutes(deadlockDetector, acquisitionPolicy, deadlockScenario));
         this.server = new ApiServer(broadcaster, routes);
+    }
+
+    /** El sistema está en reposo: sin pedidos en proceso ni en espera, sin camiones y con el generador detenido. */
+    private static boolean isIdle(SimClock clock, OrderProcessor processor, OrderScheduler scheduler,
+                                  ReceptionService reception, OrderGenerator generator) {
+        return workFinished(clock, processor, scheduler, reception) && !generator.snapshot().enabled();
+    }
+
+    /** No quedan pedidos en proceso ni en espera ni camiones en Recepción (el generador puede seguir encendido). */
+    private static boolean workFinished(SimClock clock, OrderProcessor processor, OrderScheduler scheduler,
+                                        ReceptionService reception) {
+        Duration now = clock.now();
+        return processor.activeOrders(now).isEmpty()
+                && scheduler.snapshot(now).waitingTotal() == 0
+                && reception.snapshot(now).trucks().isEmpty();
     }
 
     /**
@@ -126,6 +160,7 @@ public final class ApplicationComponents implements AutoCloseable {
     /** Arranca el servidor y devuelve el puerto real (útil con el puerto 0 en los tests). */
     public int start(int port) {
         inventoryWorker.start();
+        deadlockDetector.start();
         scheduler.start();
         generator.start();
         broadcaster.start(SNAPSHOT_PERIOD);
@@ -145,5 +180,6 @@ public final class ApplicationComponents implements AutoCloseable {
         orderProcessor.close();
         reception.close();
         inventoryWorker.close();
+        deadlockDetector.close();
     }
 }

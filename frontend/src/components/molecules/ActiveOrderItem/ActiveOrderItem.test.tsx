@@ -13,6 +13,7 @@ const WORKING: OrderProgress = {
   held: ['WAREHOUSE_WORKER', 'PACKING_STATION'],
   progress: 0.4,
   remainingMillis: 130_000,
+  retries: 0,
 }
 
 function renderItem(order: OrderProgress) {
@@ -46,6 +47,18 @@ describe('ActiveOrderItem', () => {
     expect(screen.getByText('Encargados de bodega')).toBeInTheDocument()
     expect(screen.getByText('Estaciones de empaque')).toBeInTheDocument()
     expect(screen.queryByText(/Esperando/)).not.toBeInTheDocument()
+  })
+
+  it('shows how many times it was expelled to undo a deadlock', () => {
+    renderItem({ ...WORKING, retries: 2 })
+
+    expect(screen.getByText('Reintento 2')).toBeInTheDocument()
+  })
+
+  it('shows no retry badge for an order that never had to retry', () => {
+    renderItem(WORKING)
+
+    expect(screen.queryByText(/Reintento/)).not.toBeInTheDocument()
   })
 
   it('highlights the resource it is waiting for', () => {

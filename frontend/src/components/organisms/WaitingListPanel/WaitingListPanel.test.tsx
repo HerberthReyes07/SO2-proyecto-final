@@ -18,6 +18,7 @@ const waiting = (orderId: string, waitedMinutes: number, serviceLevel: WaitingOr
   waitedMillis: waitedMinutes * MINUTE,
   targetWaitMillis: 10 * MINUTE,
   missingStock: [],
+  retries: 0,
 })
 
 function setup(overrides: Partial<React.ComponentProps<typeof WaitingListPanel>> = {}) {

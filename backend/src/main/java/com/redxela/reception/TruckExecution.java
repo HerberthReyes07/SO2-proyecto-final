@@ -2,6 +2,7 @@ package com.redxela.reception;
 
 import com.redxela.domain.ResourceType;
 import com.redxela.resources.Operation;
+import com.redxela.resources.OperationKind;
 import java.time.Duration;
 import java.util.EnumSet;
 import java.util.List;
@@ -22,6 +23,8 @@ final class TruckExecution implements Operation {
     private final int quantity;
     private final long sequence;
     private volatile State state = State.initial();
+    // Cuántas veces fue expulsado; lo escribe solo el hilo del camión.
+    private volatile int retries;
 
     TruckExecution(String id, String productId, int quantity, long sequence) {
         this.id = id;
@@ -33,6 +36,11 @@ final class TruckExecution implements Operation {
     @Override
     public String id() {
         return id;
+    }
+
+    @Override
+    public OperationKind kind() {
+        return OperationKind.TRUCK;
     }
 
     String productId() {
@@ -61,6 +69,16 @@ final class TruckExecution implements Operation {
         state = state.released(resource);
     }
 
+    void beginManeuvering() {
+        state = state.maneuvering();
+    }
+
+    /** El camión fue expulsado: ya soltó sus recursos y va a esperar antes de reintentar. */
+    void beginRetrying() {
+        retries++;
+        state = state.retrying();
+    }
+
     void beginUnloading(Duration work, Duration now) {
         state = state.unloading(work, now);
     }
@@ -74,7 +92,7 @@ final class TruckExecution implements Operation {
     TruckProgressSnapshot progress(Duration now) {
         State current = state; // una sola lectura volátil: todo lo que sigue es coherente
         return new TruckProgressSnapshot(id, productId, quantity, current.phase(), current.awaiting(),
-                current.held(), current.progressAt(now));
+                current.held(), current.progressAt(now), retries);
     }
 
     /**
@@ -109,6 +127,14 @@ final class TruckExecution implements Operation {
             return new State(phase, awaiting, List.copyOf(updated), work, startedAt);
         }
 
+        State maneuvering() {
+            return new State(TruckPhase.MANEUVERING, null, held, work, startedAt);
+        }
+
+        State retrying() {
+            return new State(TruckPhase.RETRYING, null, List.of(), Duration.ZERO, Duration.ZERO);
+        }
+
         State unloading(Duration unloadWork, Duration now) {
             return new State(TruckPhase.UNLOADING, null, held, unloadWork, now);
         }
@@ -119,7 +145,7 @@ final class TruckExecution implements Operation {
 
         double progressAt(Duration now) {
             return switch (phase) {
-                case WAITING_RESOURCES -> 0.0;
+                case WAITING_RESOURCES, MANEUVERING, RETRYING -> 0.0;
                 case REPORTING -> 1.0;
                 case UNLOADING -> work.isZero() ? 1.0
                         : Math.min(1.0, Math.max(0.0, (double) now.minus(startedAt).toMillis() / work.toMillis()));

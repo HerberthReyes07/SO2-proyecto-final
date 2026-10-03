@@ -44,8 +44,8 @@ describe('ReceptionPanel', () => {
   it('lists the trucks in reception with the product name', () => {
     const reception: ReceptionState = {
       trucks: [
-        { truckId: 'TRK-0001', productId: 'P-001', quantity: 10, phase: 'UNLOADING', awaiting: null, held: ['SCANNER'], progress: 0.5 },
-        { truckId: 'TRK-0002', productId: 'P-007', quantity: 20, phase: 'REPORTING', awaiting: null, held: [], progress: 1 },
+        { truckId: 'TRK-0001', productId: 'P-001', quantity: 10, phase: 'UNLOADING', awaiting: null, held: ['SCANNER'], progress: 0.5, retries: 0 },
+        { truckId: 'TRK-0002', productId: 'P-007', quantity: 20, phase: 'REPORTING', awaiting: null, held: [], progress: 1, retries: 0 },
       ],
     }
 

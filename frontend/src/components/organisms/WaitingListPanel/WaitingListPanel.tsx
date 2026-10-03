@@ -64,6 +64,7 @@ export function WaitingListPanel({
                   totalItems={order.totalItems}
                   criterion={describeCriterion(currentPolicy, order, levelLabel)}
                   overdue={isOverdue(order)}
+                  retries={order.retries}
                   stockWarning={
                     order.missingStock.length > 0 ? describeMissingStock(order.missingStock, productNames) : undefined
                   }

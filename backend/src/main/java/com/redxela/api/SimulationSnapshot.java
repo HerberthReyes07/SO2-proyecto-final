@@ -1,5 +1,7 @@
 package com.redxela.api;
 
+import com.redxela.deadlock.DeadlockSnapshot;
+import com.redxela.demo.ScenarioSnapshot;
 import com.redxela.generator.GeneratorSnapshot;
 import com.redxela.inventory.InventorySnapshot;
 import com.redxela.processing.OrderProgressSnapshot;
@@ -23,6 +25,8 @@ import java.util.List;
  * @param inventory       existencias, buffer de recepción y estado del procesamiento de Inventario
  * @param reception       camiones en Recepción
  * @param warehouse       ubicaciones del almacén y lotes
+ * @param deadlock        prevención vigente y deadlock confirmado, si lo hay
+ * @param scenario        estado del escenario de demostración del deadlock
  * @param resources       estado de cada pool de recursos
  * @param activeOrders    pedidos en proceso, en orden de llegada
  * @param completedOrders cantidad de pedidos ya despachados
@@ -35,6 +39,8 @@ public record SimulationSnapshot(
         InventorySnapshot inventory,
         ReceptionSnapshot reception,
         WarehouseSnapshot warehouse,
+        DeadlockSnapshot deadlock,
+        ScenarioSnapshot scenario,
         List<PoolSnapshot> resources,
         List<OrderProgressSnapshot> activeOrders,
         long completedOrders) {

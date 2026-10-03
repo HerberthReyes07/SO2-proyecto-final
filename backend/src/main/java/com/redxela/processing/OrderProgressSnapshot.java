@@ -19,6 +19,7 @@ import java.util.List;
  * @param held            recursos que retiene en este momento
  * @param progress        avance del trabajo, entre 0 y 1
  * @param remainingMillis tiempo simulado de trabajo restante, en ms (no incluye esperas futuras por recursos)
+ * @param retries         cuántas veces fue expulsado para deshacer un deadlock y devuelto a la lista de espera
  */
 public record OrderProgressSnapshot(
         String orderId,
@@ -30,7 +31,8 @@ public record OrderProgressSnapshot(
         ResourceType awaiting,
         List<ResourceType> held,
         double progress,
-        long remainingMillis) {
+        long remainingMillis,
+        int retries) {
 
     public OrderProgressSnapshot {
         held = List.copyOf(held);

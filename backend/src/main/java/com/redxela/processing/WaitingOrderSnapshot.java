@@ -15,6 +15,7 @@ import java.util.List;
  * @param targetWaitMillis tiempo máximo de espera objetivo de su nivel; si {@code waitedMillis} lo supera, está retrasado
  * @param missingStock     productos de los que falta stock para atenderlo (vacío si hay para todo); mientras
  *                         no esté vacío el pedido no puede admitirse aunque haya encargados libres
+ * @param retries          cuántas veces fue expulsado para deshacer un deadlock y devuelto a la lista
  */
 public record WaitingOrderSnapshot(
         String orderId,
@@ -23,7 +24,8 @@ public record WaitingOrderSnapshot(
         int totalItems,
         long waitedMillis,
         long targetWaitMillis,
-        List<MissingStock> missingStock) {
+        List<MissingStock> missingStock,
+        int retries) {
 
     public WaitingOrderSnapshot {
         missingStock = List.copyOf(missingStock);

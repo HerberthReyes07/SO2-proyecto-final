@@ -11,4 +11,9 @@ public interface Operation {
 
     /** Identificador legible, usado en la interfaz y en los logs (ej. "ORD-0042", "TRK-0007"). */
     String id();
+
+    /** Clase de operación; por defecto {@link OperationKind#OTHER}. */
+    default OperationKind kind() {
+        return OperationKind.OTHER;
+    }
 }

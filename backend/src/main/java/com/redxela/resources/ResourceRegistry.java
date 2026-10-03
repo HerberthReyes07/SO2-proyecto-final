@@ -47,6 +47,15 @@ public final class ResourceRegistry {
         pools.values().forEach(ResourcePool::resetUsage);
     }
 
+    /**
+     * Quién retiene y quién espera cada recurso, en orden global. Cada pool se lee bajo su propio
+     * lock, así que el conjunto <b>no es una foto atómica</b> de todo el sistema: quien lo use para
+     * detectar deadlocks debe tenerlo en cuenta (ver {@code DeadlockDetector}).
+     */
+    public List<PoolOperations> operations() {
+        return Arrays.stream(ResourceType.values()).map(type -> pools.get(type).operations()).toList();
+    }
+
     /** Fotos de todos los pools, en orden global de recursos. */
     public List<PoolSnapshot> snapshots() {
         return Arrays.stream(ResourceType.values())

@@ -37,19 +37,23 @@ export interface ServiceLevelInfo {
 
 export type PlacementStrategyId = 'FIRST_FREE' | 'LEAST_USED_AISLE'
 
-/** Estrategia para elegir ubicaciones en el almacén, con la explicación de su criterio. */
-export interface StrategyInfo {
-  id: PlacementStrategyId
+export type PreventionModeId = 'NONE' | 'GLOBAL_ORDER'
+
+/** Una opción elegible con la explicación de su criterio (políticas, estrategias de ubicación, prevención de deadlock). */
+export interface OptionInfo<Id extends string = string> {
+  id: Id
   displayName: string
   description: string
 }
 
 /** Política de atención con la explicación de su criterio de orden. */
-export interface PolicyInfo {
-  id: PolicyId
-  displayName: string
-  description: string
-}
+export type PolicyInfo = OptionInfo<PolicyId>
+
+/** Estrategia para elegir ubicaciones en el almacén. */
+export type StrategyInfo = OptionInfo<PlacementStrategyId>
+
+/** Estrategia de prevención de deadlock. */
+export type PreventionInfo = OptionInfo<PreventionModeId>
 
 export interface CatalogResponse {
   products: Product[]
@@ -57,6 +61,7 @@ export interface CatalogResponse {
   serviceLevels: ServiceLevelInfo[]
   policies: PolicyInfo[]
   placementStrategies: StrategyInfo[]
+  preventionModes: PreventionInfo[]
 }
 
 export interface Customer {

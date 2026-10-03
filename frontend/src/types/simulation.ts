@@ -1,4 +1,4 @@
-import type { PlacementStrategyId, PolicyId, ServiceLevelId } from '@/types/catalog'
+import type { PlacementStrategyId, PolicyId, PreventionModeId, ServiceLevelId } from '@/types/catalog'
 
 /** Tipos que reflejan el contrato JSON del backend (record `SimulationSnapshot` y relacionados). */
 
@@ -43,6 +43,8 @@ export interface OrderProgress {
   progress: number
   /** Tiempo simulado de trabajo restante, en ms (no incluye esperas futuras por recursos). */
   remainingMillis: number
+  /** Veces que fue expulsado para deshacer un deadlock y devuelto a la lista de espera. */
+  retries: number
 }
 
 /** Faltante de un producto para poder atender un pedido. */
@@ -64,6 +66,8 @@ export interface WaitingOrder {
   targetWaitMillis: number
   /** Productos de los que falta stock; mientras no esté vacío el pedido no puede admitirse. */
   missingStock: MissingStock[]
+  /** Veces que fue expulsado para deshacer un deadlock y devuelto a la lista. */
+  retries: number
 }
 
 /** Política vigente y lista de espera. */
@@ -160,7 +164,7 @@ export interface InventoryState {
   worker: InventoryWorkerState
 }
 
-export type TruckPhase = 'WAITING_RESOURCES' | 'UNLOADING' | 'REPORTING'
+export type TruckPhase = 'WAITING_RESOURCES' | 'MANEUVERING' | 'UNLOADING' | 'REPORTING' | 'RETRYING'
 
 /** Un camión en Recepción. */
 export interface Truck {
@@ -172,6 +176,8 @@ export interface Truck {
   held: ResourceType[]
   /** Avance de la descarga, entre 0 y 1. */
   progress: number
+  /** Veces que fue expulsado para deshacer un deadlock. */
+  retries: number
 }
 
 export interface ReceptionState {
@@ -221,6 +227,53 @@ export interface WarehouseState {
   lots: Lot[]
 }
 
+/** Clase de operación que compite por recursos. */
+export type OperationKind = 'ORDER' | 'TRUCK' | 'OTHER'
+
+/** Una operación bloqueada en un deadlock. */
+export interface DeadlockedOperation {
+  id: string
+  kind: OperationKind
+  /** Recursos que retiene. */
+  held: ResourceType[]
+  /** Recurso que espera y no recibirá mientras dure el deadlock. */
+  waitingFor: ResourceType
+}
+
+/** Las dos operaciones entre las que se elige cuál continúa: `waiter` espera lo que retiene `holder`. */
+export interface ConflictPair {
+  waiter: string
+  holder: string
+}
+
+/** Un deadlock confirmado. */
+export interface DeadlockReport {
+  id: string
+  /** Tiempo simulado en que se confirmó, en ms. */
+  detectedAtMillis: number
+  operations: DeadlockedOperation[]
+  /** Recursos disputados: los que las operaciones bloqueadas esperan. */
+  resources: ResourceType[]
+  conflict: ConflictPair
+}
+
+export interface DeadlockState {
+  prevention: PreventionModeId
+  /** El deadlock confirmado ahora, o null si no hay ninguno. */
+  current: DeadlockReport | null
+  detected: number
+  resolved: number
+}
+
+/** En qué punto está el escenario de demostración del deadlock. */
+export type ScenarioPhase = 'IDLE' | 'RUNNING' | 'FINISHED_CLEAN' | 'FINISHED_WITH_DEADLOCK'
+
+export interface ScenarioState {
+  phase: ScenarioPhase
+  /** Prevención con la que se lanzó el último escenario, o null si nunca se lanzó. */
+  mode: PreventionModeId | null
+}
+
 /** Estado completo del centro de distribución. */
 export interface SimulationSnapshot {
   clock: ClockSnapshot
@@ -230,6 +283,8 @@ export interface SimulationSnapshot {
   inventory: InventoryState
   reception: ReceptionState
   warehouse: WarehouseState
+  deadlock: DeadlockState
+  scenario: ScenarioState
   resources: PoolSnapshot[]
   activeOrders: OrderProgress[]
   completedOrders: number

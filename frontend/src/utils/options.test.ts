@@ -37,6 +37,7 @@ describe('buildProductOptions', () => {
     serviceLevels: [],
     policies: [],
     placementStrategies: [],
+    preventionModes: [],
   }
 
   it('appends the merchandise type name to each product', () => {
@@ -64,6 +65,7 @@ describe('productNames', () => {
       serviceLevels: [],
       policies: [],
       placementStrategies: [],
+    preventionModes: [],
     }
 
     expect(productNames(catalog)).toEqual({ 'P-007': 'Refrigeradora' })
@@ -77,6 +79,7 @@ describe('productTypeIds and merchandiseTypeNames', () => {
     serviceLevels: [],
     policies: [],
     placementStrategies: [],
+    preventionModes: [],
   }
 
   it('maps each product to its type id', () => {

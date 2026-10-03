@@ -1,5 +1,7 @@
 package com.redxela.api;
 
+import com.redxela.deadlock.DeadlockDetector;
+import com.redxela.demo.DeadlockScenario;
 import com.redxela.generator.OrderGenerator;
 import com.redxela.inventory.Inventory;
 import com.redxela.inventory.InventorySnapshot;
@@ -29,12 +31,15 @@ public final class SimulationSnapshotFactory {
     private final InventoryWorker inventoryWorker;
     private final ReceptionService reception;
     private final Warehouse warehouse;
+    private final DeadlockDetector deadlockDetector;
+    private final DeadlockScenario deadlockScenario;
 
     public SimulationSnapshotFactory(SimClock clock, ResourceRegistry resources, OrderScheduler scheduler,
                                      OrderProcessor processor, OrderGenerator generator,
                                      SimulationStatistics statistics, Inventory inventory,
                                      ReceptionBuffer receptionBuffer, InventoryWorker inventoryWorker,
-                                     ReceptionService reception, Warehouse warehouse) {
+                                     ReceptionService reception, Warehouse warehouse,
+                                     DeadlockDetector deadlockDetector, DeadlockScenario deadlockScenario) {
         this.clock = clock;
         this.resources = resources;
         this.scheduler = scheduler;
@@ -46,6 +51,8 @@ public final class SimulationSnapshotFactory {
         this.inventoryWorker = inventoryWorker;
         this.reception = reception;
         this.warehouse = warehouse;
+        this.deadlockDetector = deadlockDetector;
+        this.deadlockScenario = deadlockScenario;
     }
 
     public SimulationSnapshot create() {
@@ -61,6 +68,8 @@ public final class SimulationSnapshotFactory {
                 new InventorySnapshot(inventory.snapshot(), receptionBuffer.snapshot(), inventoryWorker.snapshot()),
                 reception.snapshot(now),
                 warehouse.snapshot(),
+                deadlockDetector.snapshot(),
+                deadlockScenario.snapshot(),
                 resources.snapshots(),
                 processor.activeOrders(now),
                 processor.completedCount());

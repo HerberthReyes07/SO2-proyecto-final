@@ -48,6 +48,12 @@ describe('WaitingOrderItem', () => {
     expect(screen.getByText('Camiseta (faltan 5)')).toBeInTheDocument()
   })
 
+  it('shows that an order was returned to the list after a deadlock', () => {
+    renderItem({ retries: 1 } as Partial<typeof BASE>)
+
+    expect(screen.getByText('Reintento 1')).toBeInTheDocument()
+  })
+
   it('does not flag an order that is still on time', () => {
     renderItem()
 

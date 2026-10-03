@@ -148,7 +148,10 @@ class InventoryWorkerTest {
         });
 
         // 1 en proceso + 2 en el buffer + el resto del productor esperando espacio.
-        Await.until("buffer full and producer blocked", () -> buffer.snapshot().size() == BUFFER_CAPACITY
+        // Hay que esperar también a que Inventario haya retirado el primer mensaje: antes de eso el buffer
+        // ya puede estar lleno con el tercer productor bloqueado, y "aceptados" valdría 2 en lugar de 3.
+        Await.until("inventory busy, buffer full and producer blocked", () -> worker.snapshot().processing() != null
+                && buffer.snapshot().size() == BUFFER_CAPACITY
                 && buffer.snapshot().blockedProducers() == 1);
         assertThat(buffer.snapshot().accepted()).isEqualTo(BUFFER_CAPACITY + 1);
 

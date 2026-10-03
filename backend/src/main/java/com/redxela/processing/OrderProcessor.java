@@ -1,6 +1,7 @@
 package com.redxela.processing;
 
 import com.redxela.domain.CompletedOrder;
+import com.redxela.domain.OrderStatus;
 import com.redxela.domain.QueuedOrder;
 import com.redxela.resources.OperationPreemptedException;
 import java.time.Duration;
@@ -12,6 +13,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,6 +37,9 @@ public final class OrderProcessor implements AutoCloseable {
     private final AtomicLong completed = new AtomicLong();
     // Se recorre desde los hilos de los pedidos y se modifica rara vez (al armar la aplicación).
     private final List<OrderLifecycleListener> listeners = new CopyOnWriteArrayList<>();
+    // Quién recibe a los pedidos expulsados por un deadlock; se asigna una vez al armar la aplicación.
+    private volatile Consumer<QueuedOrder> expelledHandler = queued ->
+            LOG.warn("Order {} was expelled but nobody takes it back", queued.order().id());
 
     public OrderProcessor(OrderWorkflow workflow, ProcessingTimes times) {
         this.workflow = workflow;
@@ -47,6 +52,14 @@ public final class OrderProcessor implements AutoCloseable {
      */
     public void addListener(OrderLifecycleListener listener) {
         listeners.add(listener);
+    }
+
+    /**
+     * Indica adónde van los pedidos expulsados para deshacer un deadlock (la lista de espera). Un pedido
+     * expulsado ya liberó todo lo que retenía, incluido el encargado y su stock reservado.
+     */
+    public void onExpelled(Consumer<QueuedOrder> handler) {
+        this.expelledHandler = handler;
     }
 
     /** Crea la ejecución de un pedido que salió de la lista de espera, con su plan de etapas. */
@@ -92,9 +105,12 @@ public final class OrderProcessor implements AutoCloseable {
             LOG.info("Order {} interrupted", execution.id());
             notifyAborted(execution.id());
         } catch (OperationPreemptedException e) {
-            // Aún no hay resolución de deadlock; cuando exista, el pedido volverá a la lista de espera.
-            LOG.warn("Order {} was preempted: {}", execution.id(), e.getMessage());
+            // Víctima de un deadlock: ya liberó todo; devuelve su stock y vuelve a la lista de espera.
+            LOG.info("Order {} was expelled while waiting for {}; returning it to the waiting list",
+                    execution.id(), e.awaitedResource());
+            execution.order().status(OrderStatus.WAITING);
             notifyAborted(execution.id());
+            expelledHandler.accept(execution.queued());
         } catch (RuntimeException e) {
             LOG.error("Order {} failed", execution.id(), e);
             notifyAborted(execution.id());

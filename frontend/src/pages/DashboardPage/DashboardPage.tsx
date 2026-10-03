@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { Badge } from '@/components/atoms/Badge'
 import { ActiveOrdersPanel } from '@/components/organisms/ActiveOrdersPanel'
+import { AlertBanner } from '@/components/molecules/AlertBanner'
 import { ClockPanel } from '@/components/organisms/ClockPanel'
 import { CustomerForm } from '@/components/organisms/CustomerForm'
+import { DeadlockPanel } from '@/components/organisms/DeadlockPanel'
 import { GeneratorPanel } from '@/components/organisms/GeneratorPanel'
 import { InventoryPanel } from '@/components/organisms/InventoryPanel'
 import { OrderForm } from '@/components/organisms/OrderForm'
@@ -15,6 +17,7 @@ import { WarehousePanel } from '@/components/organisms/WarehousePanel'
 import { WaitingListPanel } from '@/components/organisms/WaitingListPanel'
 import { DashboardTemplate } from '@/components/templates/DashboardTemplate'
 import { useClockControls } from '@/hooks/useClockControls'
+import { useDeadlockActions } from '@/hooks/useDeadlockActions'
 import { useCatalog, useCustomers } from '@/hooks/useReferenceData'
 import { useReferenceOptions } from '@/hooks/useReferenceOptions'
 import { useRemoteAction } from '@/hooks/useRemoteAction'
@@ -47,6 +50,7 @@ const TABS = [
   { id: 'orders', label: 'Pedidos' },
   { id: 'inventory', label: 'Inventario' },
   { id: 'warehouse', label: 'Almacén' },
+  { id: 'deadlock', label: 'Deadlock' },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -67,6 +71,7 @@ export function DashboardPage() {
   const generatorAction = useRemoteAction(updateGenerator)
   const resetAction = useRemoteAction(resetStats)
   const strategyAction = useRemoteAction(changeStrategy)
+  const deadlockActions = useDeadlockActions()
 
   const handleCreateCustomer = async (request: CreateCustomerRequest) => {
     const created = await customerAction.run(request)
@@ -142,6 +147,13 @@ export function DashboardPage() {
         </>
       }
     >
+      {snapshot?.deadlock.current && (
+        <AlertBanner
+          message={`Deadlock detectado (${snapshot.deadlock.current.id}): ${snapshot.deadlock.current.operations.length} operaciones bloqueadas.`}
+          actionLabel="Ver y resolver"
+          onAction={() => setActiveTab('deadlock')}
+        />
+      )}
       {snapshot ? (
         <TabbedContent
           tabs={TABS}
@@ -189,6 +201,20 @@ export function DashboardPage() {
               />
               <InventoryPanel stock={snapshot.inventory.stock} productNames={options.productNames} />
             </>
+          )}
+          {activeTab === 'deadlock' && (
+            <DeadlockPanel
+              deadlock={snapshot.deadlock}
+              scenario={snapshot.scenario}
+              resourcesInPlay={snapshot.resources.filter((pool) => pool.type === 'SCANNER' || pool.type === 'LOADING_DOCK')}
+              modes={catalog.data?.preventionModes ?? []}
+              onPreventionChange={deadlockActions.changePrevention}
+              onStartScenario={deadlockActions.startScenario}
+              onResolve={deadlockActions.resolve}
+              pending={deadlockActions.pending}
+              error={deadlockActions.error}
+              resolution={deadlockActions.resolution}
+            />
           )}
           {activeTab === 'warehouse' && (
             <WarehousePanel

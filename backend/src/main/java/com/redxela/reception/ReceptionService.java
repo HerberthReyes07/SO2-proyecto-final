@@ -1,6 +1,7 @@
 package com.redxela.reception;
 
 import com.redxela.catalog.ProductCatalog;
+import com.redxela.deadlock.AcquisitionPolicy;
 import com.redxela.domain.ResourceType;
 import com.redxela.inventory.ReceptionBuffer;
 import com.redxela.inventory.ReceptionMessage;
@@ -32,23 +33,25 @@ import org.slf4j.LoggerFactory;
  * terminaron de descargar y paralizaría los despachos. Así, un buffer lleno solo hace esperar al
  * camión que reporta.
  *
- * <h3>Orden de adquisición</h3>
- * Los recursos se piden en el orden global ({@link #RECIPE}), igual que los pedidos, por lo que no
- * pueden formar espera circular con ellos. El orden inverso, que provoca el deadlock de la
- * demostración, se introduce junto con su detección y resolución.
+ * <h3>Orden de adquisición y deadlock</h3>
+ * Un camión <i>naturalmente</i> pide primero el andén (llega y se acomoda) y después el escáner
+ * (registra la mercadería): {@link #NATURAL_RECIPE}, justo el <b>orden inverso</b> al de un pedido
+ * en despacho (escáner → andén). Con ambos órdenes en el sistema puede formarse una espera
+ * circular. La {@link AcquisitionPolicy} decide si se respeta el orden natural (deadlock posible) o se
+ * reordena según el orden global de recursos (deadlock imposible).
+ *
+ * <h3>Expulsión</h3>
+ * Si el camión es elegido como víctima de un deadlock, libera todo, espera un rato y vuelve a la fila.
  */
 public final class ReceptionService implements AutoCloseable {
 
-    /** Recursos que necesita un camión, en el orden global de adquisición. */
-    static final List<ResourceType> RECIPE = List.of(ResourceType.SCANNER, ResourceType.LOADING_DOCK);
+    /** Recursos que necesita un camión, en su orden natural: andén y luego escáner (inverso al de un pedido). */
+    static final List<ResourceType> NATURAL_RECIPE = List.of(ResourceType.LOADING_DOCK, ResourceType.SCANNER);
 
     public static final int MAX_QUANTITY_PER_TRUCK = 1_000;
     public static final int MAX_TRUCKS_PER_REQUEST = 50;
     /** Tope de camiones en el sistema, para que una ráfaga no cree hilos sin límite. */
     public static final int MAX_PENDING_TRUCKS = 100;
-
-    /** Tiempo simulado de descarga y registro por cada unidad que trae el camión. */
-    static final Duration UNLOAD_TIME_PER_UNIT = Duration.ofSeconds(1);
 
     private static final Logger LOG = LoggerFactory.getLogger(ReceptionService.class);
 
@@ -56,16 +59,21 @@ public final class ReceptionService implements AutoCloseable {
     private final SimClock clock;
     private final ReceptionBuffer buffer;
     private final ProductCatalog catalog;
+    private final AcquisitionPolicy policy;
+    private final ReceptionTimes times;
     private final ExecutorService threads =
             Executors.newThreadPerTaskExecutor(Thread.ofPlatform().name("truck-", 1).factory());
     private final Map<String, TruckExecution> active = new ConcurrentHashMap<>();
     private final AtomicInteger nextNumber = new AtomicInteger();
 
-    public ReceptionService(ResourceRegistry resources, SimClock clock, ReceptionBuffer buffer, ProductCatalog catalog) {
+    public ReceptionService(ResourceRegistry resources, SimClock clock, ReceptionBuffer buffer, ProductCatalog catalog,
+                            AcquisitionPolicy policy, ReceptionTimes times) {
         this.resources = resources;
         this.clock = clock;
         this.buffer = buffer;
         this.catalog = catalog;
+        this.policy = policy;
+        this.times = times;
     }
 
     /**
@@ -110,15 +118,12 @@ public final class ReceptionService implements AutoCloseable {
 
     private void runAndTrack(TruckExecution truck) {
         try {
-            unload(truck);
+            unloadUntilDone(truck);
             truck.beginReporting();
             buffer.put(new ReceptionMessage(truck.id(), truck.productId(), truck.quantity()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt(); // el servicio se está cerrando
             LOG.info("Truck {} interrupted", truck.id());
-        } catch (OperationPreemptedException e) {
-            // Aún no hay resolución de deadlock; cuando exista, el camión volverá a esperar su turno.
-            LOG.warn("Truck {} was preempted: {}", truck.id(), e.getMessage());
         } catch (RuntimeException e) {
             LOG.error("Truck {} failed", truck.id(), e);
         } finally {
@@ -126,17 +131,39 @@ public final class ReceptionService implements AutoCloseable {
         }
     }
 
-    /** Toma los recursos en orden, descarga y los suelta, pase lo que pase. */
+    /**
+     * Descarga el camión; si es expulsado para deshacer un deadlock, espera un rato y vuelve a intentarlo
+     * desde el principio (ya soltó todo, así que no arrastra nada).
+     */
+    private void unloadUntilDone(TruckExecution truck) throws InterruptedException {
+        while (true) {
+            try {
+                unload(truck);
+                return;
+            } catch (OperationPreemptedException e) {
+                LOG.info("Truck {} was expelled while waiting for {}; it will retry", truck.id(), e.awaitedResource());
+                truck.beginRetrying();
+                clock.sleep(times.retryBackoff());
+            }
+        }
+    }
+
+    /** Toma los recursos en el orden que indica la política, descarga y los suelta, pase lo que pase. */
     private void unload(TruckExecution truck) throws InterruptedException, OperationPreemptedException {
         Set<ResourceType> held = EnumSet.noneOf(ResourceType.class);
         try {
-            for (ResourceType type : RECIPE) {
+            for (ResourceType type : policy.arrange(NATURAL_RECIPE)) {
                 truck.beginWaiting(type);
                 resources.pool(type).acquire(truck);
                 held.add(type);
                 truck.resourceAcquired(type);
+                if (type == ResourceType.LOADING_DOCK) {
+                    // Acomodar el camión en el andén: mientras tanto retiene lo que ya tenga.
+                    truck.beginManeuvering();
+                    clock.sleep(times.maneuver());
+                }
             }
-            Duration work = UNLOAD_TIME_PER_UNIT.multipliedBy(truck.quantity());
+            Duration work = times.unloadPerUnit().multipliedBy(truck.quantity());
             truck.beginUnloading(work, clock.now());
             clock.sleep(work);
         } finally {

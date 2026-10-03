@@ -5,6 +5,7 @@ import com.redxela.domain.QueuedOrder;
 import com.redxela.domain.ResourceType;
 import com.redxela.domain.Stage;
 import com.redxela.resources.Operation;
+import com.redxela.resources.OperationKind;
 import java.time.Duration;
 import java.util.EnumSet;
 import java.util.List;
@@ -41,6 +42,11 @@ public final class OrderExecution implements Operation {
     @Override
     public String id() {
         return queued.order().id();
+    }
+
+    @Override
+    public OperationKind kind() {
+        return OperationKind.ORDER;
     }
 
     public QueuedOrder queued() {
@@ -115,7 +121,8 @@ public final class OrderExecution implements Operation {
                 current.awaiting(),
                 current.held(),
                 fraction,
-                remaining.toMillis());
+                remaining.toMillis(),
+                queued.retries());
     }
 
     /**
