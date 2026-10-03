@@ -13,10 +13,11 @@ cd frontend && npm install && npm run dev                                      #
 
 ## Ejecución como una sola aplicación
 ```bash
-cd frontend && npm install && npm run build   # copia la UI a backend/src/main/resources/static
-cd ../backend && mvn package                  # genera target/redxela.jar
+cd backend && mvn package   # construye también el frontend (npm install + npm run build) y genera target/redxela.jar
 java -jar target/redxela.jar                  # http://localhost:7070
 ```
+`mvn package` necesita Node en el PATH para construir la interfaz; `mvn package -DskipFrontend` empaqueta sin ella
+(el JAR solo tendrá la API). `mvn test` nunca invoca a Node. Otro puerto: `java -Dredxela.port=8080 -jar target/redxela.jar`.
 
 ## Pruebas
 ```bash

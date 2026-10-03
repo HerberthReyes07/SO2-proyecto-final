@@ -370,6 +370,14 @@ El usuario elige cuál de las dos operaciones continúa; la otra es **expulsada*
 | Broadcaster de snapshots | 1 | Lecturas con locks breves |
 | Comparador de políticas | 1 mientras compara (+ los hilos de la corrida en curso) | Registro inmutable `volatile`; interrupción para cancelar |
 
+**Reinicio de la simulación.** `Simulation` agrupa todo el estado y los hilos (reloj, recursos, planificador,
+inventario, almacén, detector, generador…); `ApplicationComponents` la une con el servidor HTTP. "Reiniciar" cierra
+ambos y levanta otros nuevos en el mismo puerto, en vez de limpiar uno por uno decenas de estados con hilos en vuelo
+(pedidos a mitad de etapa, camiones esperando, un deadlock vigente), donde cada limpieza sería una posible carrera.
+El WebSocket se cae y el navegador se reconecta solo. Se conservan las cuentas de cliente (datos maestros); todo lo
+demás vuelve al estado inicial, incluidos reloj (×60) y política. Un test verifica que los reinicios repetidos no
+dejan hilos vivos.
+
 Los pools son monitores propios y no `Semaphore` porque hay que saber quién retiene y quién espera,
 conceder por prioridad y poder expulsar a quien espera.
 

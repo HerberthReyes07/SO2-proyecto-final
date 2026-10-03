@@ -11,7 +11,7 @@ Enunciado: `reference/Proyecto Final.md`. Diseño acordado: `docs/PROPUESTA.md`.
 ## Comandos
 - Backend: `cd backend && mvn test` · `mvn package` (JAR único: `target/redxela.jar`)
 - Frontend: `cd frontend && npm run dev` (proxy a :7070) · `npm test` · `npm run lint` · `npx tsc -b` · `npm run build`
-- Producción local: `npm run build` y luego `java -jar backend/target/redxela.jar` → http://localhost:7070
+- Producción local: `cd backend && mvn package` (construye también el frontend; `-DskipFrontend` lo omite) y luego `java -jar target/redxela.jar` → http://localhost:7070
 
 ## Convenciones (obligatorias)
 - **Código en inglés; comentarios y Javadoc en español.** Textos visibles al usuario en español.

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Badge } from '@/components/atoms/Badge'
 import { ActiveOrdersPanel } from '@/components/organisms/ActiveOrdersPanel'
 import { AlertBanner } from '@/components/molecules/AlertBanner'
+import { ConfirmButton } from '@/components/molecules/ConfirmButton'
 import { BenchmarkPanel } from '@/components/organisms/BenchmarkPanel'
 import { ClockPanel } from '@/components/organisms/ClockPanel'
 import { CustomerForm } from '@/components/organisms/CustomerForm'
@@ -29,6 +30,7 @@ import { updateGenerator } from '@/services/generatorApi'
 import { placeOrder } from '@/services/orderApi'
 import { registerArrival } from '@/services/receptionApi'
 import { changePolicy } from '@/services/schedulingApi'
+import { resetSimulation } from '@/services/simulationApi'
 import { resetStats } from '@/services/statsApi'
 import { changeStrategy } from '@/services/warehouseApi'
 import { describeArrival } from '@/utils/describeArrival'
@@ -73,6 +75,7 @@ export function DashboardPage() {
   const policyAction = useRemoteAction(changePolicy)
   const generatorAction = useRemoteAction(updateGenerator)
   const resetAction = useRemoteAction(resetStats)
+  const resetSimulationAction = useRemoteAction(resetSimulation)
   const strategyAction = useRemoteAction(changeStrategy)
   const deadlockActions = useDeadlockActions()
   const benchmarkActions = useBenchmarkActions()
@@ -107,6 +110,14 @@ export function DashboardPage() {
             />
           )}
           <Badge tone={connection.tone}>{connection.label}</Badge>
+          <ConfirmButton
+            label="Reiniciar simulación"
+            question="Se pierden pedidos, stock, almacén y estadísticas (los clientes se conservan)."
+            confirmLabel="Sí, reiniciar"
+            disabled={resetSimulationAction.pending}
+            onConfirm={() => void resetSimulationAction.run()}
+          />
+          {resetSimulationAction.error && <span role="alert">{resetSimulationAction.error}</span>}
         </>
       }
       sidebar={

@@ -6,6 +6,8 @@ import io.javalin.http.HttpStatus;
 import io.javalin.http.staticfiles.Location;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Servidor HTTP: expone la API REST, el WebSocket de estado y los archivos estáticos del frontend.
@@ -14,10 +16,21 @@ import java.util.Map;
  */
 public final class ApiServer implements AutoCloseable {
 
+    private static final Logger LOG = LoggerFactory.getLogger(ApiServer.class);
+    private static final String STATIC_DIRECTORY = "/static";
+
     private final Javalin app;
 
     public ApiServer(SnapshotBroadcaster broadcaster, List<ApiRoutes> routes) {
-        this.app = Javalin.create(config -> config.staticFiles.add("/static", Location.CLASSPATH));
+        this.app = Javalin.create(config -> {
+            // Javalin falla al arrancar si la carpeta no existe, y puede no existir (JAR sin frontend, tests, clon
+            // recién bajado): la API debe funcionar igual, así que los estáticos son opcionales.
+            if (ApiServer.class.getResource(STATIC_DIRECTORY) != null) {
+                config.staticFiles.add(STATIC_DIRECTORY, Location.CLASSPATH);
+            } else {
+                LOG.warn("The frontend was not built: serving the API only");
+            }
+        });
 
         app.get("/api/health", ctx -> ctx.json(Map.of("status", "ok")));
         routes.forEach(group -> group.register(app));

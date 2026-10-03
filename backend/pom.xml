@@ -19,6 +19,10 @@
         <junit.version>5.12.2</junit.version>
         <assertj.version>3.27.3</assertj.version>
         <main.class>com.redxela.RedxelaApplication</main.class>
+        <!-- Para empaquetar sin construir el frontend: mvn package -DskipFrontend -->
+        <skipFrontend>false</skipFrontend>
+        <npm.executable>npm</npm.executable>
+        <frontend.dir>${project.basedir}/../frontend</frontend.dir>
     </properties>
 
     <dependencies>
@@ -58,12 +62,68 @@
         </dependency>
     </dependencies>
 
+    <profiles>
+        <!-- En Windows npm es un script .cmd y Maven no lo resuelve sin la extensión. -->
+        <profile>
+            <id>windows</id>
+            <activation>
+                <os><family>windows</family></os>
+            </activation>
+            <properties>
+                <npm.executable>npm.cmd</npm.executable>
+            </properties>
+        </profile>
+    </profiles>
+
     <build>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.3</version>
+            </plugin>
+            <!--
+              Construye el frontend dentro de `mvn package`, para que un solo comando genere el JAR con la interfaz.
+              Va en prepare-package (no antes) para que `mvn test` no dependa de Node, y escribe directo en
+              target/classes/static, que es lo que luego empaqueta el JAR.
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.6.4</version>
+                <configuration>
+                    <skip>${skipFrontend}</skip>
+                    <executable>${npm.executable}</executable>
+                    <workingDirectory>${frontend.dir}</workingDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>frontend-install</id>
+                        <phase>prepare-package</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration>
+                            <arguments>
+                                <argument>install</argument>
+                                <argument>--no-audit</argument>
+                                <argument>--no-fund</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>frontend-build</id>
+                        <phase>prepare-package</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration>
+                            <arguments>
+                                <argument>run</argument>
+                                <argument>build</argument>
+                                <argument>--</argument>
+                                <argument>--outDir</argument>
+                                <argument>${project.build.outputDirectory}/static</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <!-- Empaqueta un único JAR ejecutable: java -jar target/redxela.jar -->
             <plugin>
