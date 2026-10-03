@@ -62,3 +62,17 @@ describe('getJson', () => {
     await expect(getJson('/api/nope')).rejects.toThrow('no existe')
   })
 })
+
+describe('sendJson with DELETE', () => {
+  it('sends the request without a body', async () => {
+    const fetchMock = stubFetch({ ok: true, status: 204, json: vi.fn() })
+
+    await sendJson('/api/benchmark', 'DELETE', undefined)
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/benchmark', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: undefined,
+    })
+  })
+})

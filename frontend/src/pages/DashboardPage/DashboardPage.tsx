@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Badge } from '@/components/atoms/Badge'
 import { ActiveOrdersPanel } from '@/components/organisms/ActiveOrdersPanel'
 import { AlertBanner } from '@/components/molecules/AlertBanner'
+import { BenchmarkPanel } from '@/components/organisms/BenchmarkPanel'
 import { ClockPanel } from '@/components/organisms/ClockPanel'
 import { CustomerForm } from '@/components/organisms/CustomerForm'
 import { DeadlockPanel } from '@/components/organisms/DeadlockPanel'
@@ -16,6 +17,7 @@ import { TabbedContent } from '@/components/organisms/TabbedContent'
 import { WarehousePanel } from '@/components/organisms/WarehousePanel'
 import { WaitingListPanel } from '@/components/organisms/WaitingListPanel'
 import { DashboardTemplate } from '@/components/templates/DashboardTemplate'
+import { useBenchmarkActions } from '@/hooks/useBenchmarkActions'
 import { useClockControls } from '@/hooks/useClockControls'
 import { useDeadlockActions } from '@/hooks/useDeadlockActions'
 import { useCatalog, useCustomers } from '@/hooks/useReferenceData'
@@ -51,6 +53,7 @@ const TABS = [
   { id: 'inventory', label: 'Inventario' },
   { id: 'warehouse', label: 'Almacén' },
   { id: 'deadlock', label: 'Deadlock' },
+  { id: 'benchmark', label: 'Comparador' },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -72,6 +75,7 @@ export function DashboardPage() {
   const resetAction = useRemoteAction(resetStats)
   const strategyAction = useRemoteAction(changeStrategy)
   const deadlockActions = useDeadlockActions()
+  const benchmarkActions = useBenchmarkActions()
 
   const handleCreateCustomer = async (request: CreateCustomerRequest) => {
     const created = await customerAction.run(request)
@@ -214,6 +218,19 @@ export function DashboardPage() {
               pending={deadlockActions.pending}
               error={deadlockActions.error}
               resolution={deadlockActions.resolution}
+            />
+          )}
+          {activeTab === 'benchmark' && (
+            <BenchmarkPanel
+              benchmark={snapshot.benchmark}
+              policies={catalog.data?.policies ?? []}
+              currentPolicy={snapshot.scheduling.policy}
+              serviceLevelNames={options.serviceLevelNames}
+              onStart={benchmarkActions.start}
+              onCancel={benchmarkActions.cancel}
+              onUsePolicy={handlePolicyChange}
+              pending={benchmarkActions.pending}
+              error={benchmarkActions.error ?? policyAction.error}
             />
           )}
           {activeTab === 'warehouse' && (

@@ -1,6 +1,7 @@
 package com.redxela;
 
 import com.redxela.api.ApiRoutes;
+import com.redxela.api.BenchmarkRoutes;
 import com.redxela.api.ApiServer;
 import com.redxela.api.CatalogRoutes;
 import com.redxela.api.ClockRoutes;
@@ -15,6 +16,8 @@ import com.redxela.api.SnapshotBroadcaster;
 import com.redxela.api.StatsRoutes;
 import com.redxela.api.WarehouseRoutes;
 import com.redxela.catalog.ProductCatalog;
+import com.redxela.benchmark.BenchmarkRunner;
+import com.redxela.benchmark.PolicyRun;
 import com.redxela.deadlock.AcquisitionPolicy;
 import com.redxela.deadlock.DeadlockDetector;
 import com.redxela.demo.DeadlockScenario;
@@ -71,6 +74,7 @@ public final class ApplicationComponents implements AutoCloseable {
     private final ReceptionService reception;
     private final InventoryWorker inventoryWorker;
     private final DeadlockDetector deadlockDetector;
+    private final BenchmarkRunner benchmark;
     private final SnapshotBroadcaster broadcaster;
     private final ApiServer server;
 
@@ -111,9 +115,10 @@ public final class ApplicationComponents implements AutoCloseable {
                 () -> isIdle(clock, orderProcessor, scheduler, reception, generator),
                 () -> workFinished(clock, orderProcessor, scheduler, reception),
                 () -> deadlockDetector.snapshot().detected());
+        this.benchmark = new BenchmarkRunner(PolicyRun.executor());
         SimulationSnapshotFactory snapshots = new SimulationSnapshotFactory(clock, resources, scheduler,
                 orderProcessor, generator, statistics, inventory, receptionBuffer, inventoryWorker, reception, warehouse,
-                deadlockDetector, deadlockScenario);
+                deadlockDetector, deadlockScenario, benchmark);
         this.broadcaster = new SnapshotBroadcaster(snapshots::create);
         List<ApiRoutes> routes = List.of(
                 new ClockRoutes(clock),
@@ -125,7 +130,8 @@ public final class ApplicationComponents implements AutoCloseable {
                 new StatsRoutes(statistics),
                 new ReceptionRoutes(reception),
                 new WarehouseRoutes(warehouse),
-                new DeadlockRoutes(deadlockDetector, acquisitionPolicy, deadlockScenario));
+                new DeadlockRoutes(deadlockDetector, acquisitionPolicy, deadlockScenario),
+                new BenchmarkRoutes(benchmark));
         this.server = new ApiServer(broadcaster, routes);
     }
 
@@ -175,6 +181,7 @@ public final class ApplicationComponents implements AutoCloseable {
     public void close() {
         broadcaster.close();
         server.close();
+        benchmark.close(); // una comparación en marcha se cancela: usa hilos propios y no debe sobrevivir al sistema
         generator.close(); // el generador deja de crear pedidos antes de apagar lo demás
         scheduler.close(); // primero el despachador, para que no admita pedidos en un procesador cerrado
         orderProcessor.close();

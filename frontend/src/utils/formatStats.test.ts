@@ -1,4 +1,4 @@
-import { formatPercent, formatThroughput, parseSeed } from './formatStats'
+import { formatPercent, formatThroughput, parseBoundedInteger, parseSeed } from './formatStats'
 
 describe('formatPercent', () => {
   it('rounds a ratio to a whole percentage', () => {
@@ -27,5 +27,19 @@ describe('parseSeed', () => {
 
   it('rejects integers too large to be represented exactly', () => {
     expect(parseSeed('9007199254740993')).toBeNull()
+  })
+})
+
+describe('parseBoundedInteger', () => {
+  it.each([
+    ['50', 50],
+    [' 10 ', 10],
+    ['500', 500],
+  ])('accepts %j', (text, expected) => {
+    expect(parseBoundedInteger(text, 10, 500)).toBe(expected)
+  })
+
+  it.each(['', '9', '501', '12.5', '-20', 'abc', '1e2'])('rejects %j', (text) => {
+    expect(parseBoundedInteger(text, 10, 500)).toBeNull()
   })
 })

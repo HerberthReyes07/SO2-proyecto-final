@@ -1,5 +1,6 @@
 package com.redxela.api;
 
+import com.redxela.benchmark.BenchmarkRunner;
 import com.redxela.deadlock.DeadlockDetector;
 import com.redxela.demo.DeadlockScenario;
 import com.redxela.generator.OrderGenerator;
@@ -33,13 +34,15 @@ public final class SimulationSnapshotFactory {
     private final Warehouse warehouse;
     private final DeadlockDetector deadlockDetector;
     private final DeadlockScenario deadlockScenario;
+    private final BenchmarkRunner benchmark;
 
     public SimulationSnapshotFactory(SimClock clock, ResourceRegistry resources, OrderScheduler scheduler,
                                      OrderProcessor processor, OrderGenerator generator,
                                      SimulationStatistics statistics, Inventory inventory,
                                      ReceptionBuffer receptionBuffer, InventoryWorker inventoryWorker,
                                      ReceptionService reception, Warehouse warehouse,
-                                     DeadlockDetector deadlockDetector, DeadlockScenario deadlockScenario) {
+                                     DeadlockDetector deadlockDetector, DeadlockScenario deadlockScenario,
+                                     BenchmarkRunner benchmark) {
         this.clock = clock;
         this.resources = resources;
         this.scheduler = scheduler;
@@ -53,6 +56,7 @@ public final class SimulationSnapshotFactory {
         this.warehouse = warehouse;
         this.deadlockDetector = deadlockDetector;
         this.deadlockScenario = deadlockScenario;
+        this.benchmark = benchmark;
     }
 
     public SimulationSnapshot create() {
@@ -70,6 +74,7 @@ public final class SimulationSnapshotFactory {
                 warehouse.snapshot(),
                 deadlockDetector.snapshot(),
                 deadlockScenario.snapshot(),
+                benchmark.snapshot(),
                 resources.snapshots(),
                 processor.activeOrders(now),
                 processor.completedCount());

@@ -1,6 +1,6 @@
 /** Cliente HTTP mínimo para hablar JSON con el backend y traducir sus errores a mensajes legibles. */
 
-type JsonMethod = 'POST' | 'PATCH' | 'PUT'
+type JsonMethod = 'POST' | 'PATCH' | 'PUT' | 'DELETE'
 
 const NO_CONTENT = 204
 

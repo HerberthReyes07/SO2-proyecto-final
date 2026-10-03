@@ -1,6 +1,6 @@
 package com.redxela.api;
 
-import com.redxela.deadlock.StateConflictException;
+import com.redxela.common.StateConflictException;
 import io.javalin.Javalin;
 import io.javalin.http.HttpStatus;
 import io.javalin.http.staticfiles.Location;

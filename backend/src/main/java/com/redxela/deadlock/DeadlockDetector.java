@@ -1,5 +1,6 @@
 package com.redxela.deadlock;
 
+import com.redxela.common.StateConflictException;
 import com.redxela.deadlock.DeadlockAnalyzer.Analysis;
 import com.redxela.deadlock.DeadlockAnalyzer.Participant;
 import com.redxela.resources.ResourceRegistry;

@@ -1,5 +1,6 @@
 package com.redxela.deadlock;
 
+import com.redxela.common.StateConflictException;
 import static com.redxela.domain.ResourceType.LOADING_DOCK;
 import static com.redxela.domain.ResourceType.SCANNER;
 import static org.assertj.core.api.Assertions.assertThat;

@@ -1,5 +1,6 @@
 package com.redxela.api;
 
+import com.redxela.benchmark.BenchmarkSnapshot;
 import com.redxela.deadlock.DeadlockSnapshot;
 import com.redxela.demo.ScenarioSnapshot;
 import com.redxela.generator.GeneratorSnapshot;
@@ -27,6 +28,7 @@ import java.util.List;
  * @param warehouse       ubicaciones del almacén y lotes
  * @param deadlock        prevención vigente y deadlock confirmado, si lo hay
  * @param scenario        estado del escenario de demostración del deadlock
+ * @param benchmark       estado del comparador de políticas
  * @param resources       estado de cada pool de recursos
  * @param activeOrders    pedidos en proceso, en orden de llegada
  * @param completedOrders cantidad de pedidos ya despachados
@@ -41,6 +43,7 @@ public record SimulationSnapshot(
         WarehouseSnapshot warehouse,
         DeadlockSnapshot deadlock,
         ScenarioSnapshot scenario,
+        BenchmarkSnapshot benchmark,
         List<PoolSnapshot> resources,
         List<OrderProgressSnapshot> activeOrders,
         long completedOrders) {

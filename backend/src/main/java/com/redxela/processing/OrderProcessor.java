@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
@@ -28,6 +29,7 @@ import org.slf4j.LoggerFactory;
 public final class OrderProcessor implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(OrderProcessor.class);
+    private static final long SHUTDOWN_WAIT_MILLIS = 2_000;
 
     private final OrderWorkflow workflow;
     private final ProcessingTimes times;
@@ -143,5 +145,14 @@ public final class OrderProcessor implements AutoCloseable {
     @Override
     public void close() {
         threads.shutdownNow();
+        // Se espera a que los hilos terminen: quien cierra un procesador (p. ej. el comparador, que arma y desarma
+        // uno por política) necesita la garantía de que no queda ningún pedido corriendo en segundo plano.
+        try {
+            if (!threads.awaitTermination(SHUTDOWN_WAIT_MILLIS, TimeUnit.MILLISECONDS)) {
+                LOG.warn("Some order threads did not stop within {} ms", SHUTDOWN_WAIT_MILLIS);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

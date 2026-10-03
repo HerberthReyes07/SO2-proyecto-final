@@ -1,3 +1,4 @@
+import type { BenchmarkState } from '@/types/benchmark'
 import type { PlacementStrategyId, PolicyId, PreventionModeId, ServiceLevelId } from '@/types/catalog'
 
 /** Tipos que reflejan el contrato JSON del backend (record `SimulationSnapshot` y relacionados). */
@@ -285,6 +286,7 @@ export interface SimulationSnapshot {
   warehouse: WarehouseState
   deadlock: DeadlockState
   scenario: ScenarioState
+  benchmark: BenchmarkState
   resources: PoolSnapshot[]
   activeOrders: OrderProgress[]
   completedOrders: number

@@ -3,7 +3,7 @@ package com.redxela.demo;
 import com.redxela.customers.CustomerRegistry;
 import com.redxela.deadlock.AcquisitionPolicy;
 import com.redxela.deadlock.PreventionMode;
-import com.redxela.deadlock.StateConflictException;
+import com.redxela.common.StateConflictException;
 import com.redxela.domain.Customer;
 import com.redxela.domain.ResourceType;
 import com.redxela.domain.ServiceLevel;

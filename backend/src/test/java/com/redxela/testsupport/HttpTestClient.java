@@ -39,8 +39,13 @@ public final class HttpTestClient {
                 .PUT(HttpRequest.BodyPublishers.ofString(body)));
     }
 
+    public Response delete(String path) throws IOException, InterruptedException {
+        return send(HttpRequest.newBuilder(URI.create(baseUrl + path)).DELETE());
+    }
+
     private Response send(HttpRequest.Builder request) throws IOException, InterruptedException {
         HttpResponse<String> response = http.send(request.build(), HttpResponse.BodyHandlers.ofString());
+        // Una respuesta sin cuerpo (204) se interpreta como un nodo vacío, no como un error.
         return new Response(response.statusCode(), json.readTree(response.body()));
     }
 }

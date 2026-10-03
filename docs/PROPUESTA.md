@@ -59,8 +59,40 @@ llegadaB + nivelB·T`. Así el envejecimiento es una clave fija por pedido.
   (en vez de girar sin parar).
 - El snapshot envía solo los primeros 50 pedidos en espera más el total, para que no crezca sin medida.
 
-**Benchmark (paso 8):** mismo generador con semilla fija, reloj acelerado, una corrida por política. Métricas:
-espera promedio por nivel, % que cumple su objetivo, espera máxima, throughput y utilización de recursos.
+### Comparador de políticas (`benchmark`)
+
+Pestaña "Comparador": corre **la misma carga** con cada una de las cinco políticas y muestra los resultados
+lado a lado (espera promedio y máxima por nivel, % atendido a tiempo, rendimiento, ocupación de encargados),
+con el mejor valor de cada fila resaltado, un resumen en frases y un botón "Usar esta política" que cambia la
+política del sistema en vivo.
+
+**Decisiones:**
+- **Simulación aislada (`PolicyRun`).** Cada política corre con su propio reloj, pools, inventario,
+  planificador y procesador, que se desarman al terminar. No toca los pedidos, el inventario ni las
+  estadísticas en vivo. Se excluyen a propósito lo que no depende de la política: el stock es abundante (nadie
+  espera mercadería) y no hay camiones (no hay deadlock).
+- **Misma entrada: traza precalculada (`WorkloadTrace`).** Los pedidos y sus instantes de llegada se calculan
+  de antemano desde la semilla (misma llamada al `WorkloadGenerator` que el generador en vivo), así que las
+  cinco políticas reciben una entrada idéntica y no dependen de cuándo un hilo se despierte.
+- **Secuencial, no paralelo.** Cada corrida usa muchos hilos; si compitieran entre sí por el procesador, el
+  ruido de planificación de hilos distorsionaría lo medido. Se corre a ×600 (1 s real = 10 min simulados).
+- **Reproducibilidad con límite conocido.** No es un motor de eventos discretos sino hilos reales, así que un
+  mismo experimento repetido varía unos segundos simulados sobre esperas de miles de segundos (medido: <1 %),
+  muy por debajo de las diferencias entre políticas. Un test lo verifica (la misma política dos veces ≈ igual).
+- **Segundo plano con progreso.** `BenchmarkRunner` corre en su propio hilo, publica cada resultado al
+  terminar y el avance (`policiesDone`, `ordersCompleted`) en un registro inmutable `volatile`; admite
+  cancelar (interrupción, que desarma los hilos de la corrida) y rechaza una segunda comparación simultánea (409).
+
+**Lo que muestra (carga saturada, 3 pedidos/min con capacidad ≈ 1–2):**
+- *Prioridad estricta:* Exprés espera una fracción de lo que espera con FIFO, a costa de que Económico espere
+  más (inanición).
+- *Envejecimiento:* devuelve parte de esa espera a los niveles bajos, y cede algo de los altos.
+- *SJF:* la menor espera promedio general (resultado clásico), pero sin respeto por el nivel: Exprés espera
+  más que con prioridad estricta, y los pedidos grandes pueden quedar rezagados (inanición).
+- *EDF ≈ prioridad estricta* cuando todos los pedidos llegan en una ventana más corta que la diferencia entre
+  objetivos de nivel (los plazos se ordenan igual que los niveles); se separan con llegadas más espaciadas. Lo mismo
+  le pasa al envejecimiento (escalón de 10 min por nivel): con llegadas comprimidas se parece a la estricta.
+- Con carga moderada (1,5/min) casi no se distinguen: no hay a quién preferir.
 
 ### Generador automático de pedidos
 
@@ -68,7 +100,7 @@ Se separa **qué** llega de **cuándo** llega:
 
 - `WorkloadGenerator` decide, de forma **determinista a partir de una semilla**, qué pedido llega (nivel según la
   mezcla 5/15/35/25/20 %, cliente de ese nivel, 1–3 productos distintos, cantidades 1 + exponencial con tope 30) y
-  cuánto "trabajo" falta hasta la próxima llegada. No sabe de hilos ni de relojes, así que el benchmark (paso 8)
+  cuánto "trabajo" falta hasta la próxima llegada. No sabe de hilos ni de relojes, así que el comparador (`WorkloadTrace`)
   puede correr cada política con exactamente la misma carga.
 - `OrderGenerator` (un hilo) decide el momento. Las llegadas son un proceso de **Poisson**: el tiempo entre pedidos
   es exponencial. Para que un cambio de intensidad se note de inmediato (con intensidad baja el intervalo ya
@@ -200,7 +232,7 @@ Productor/consumidor acotado (capacidad 10) implementado a mano con un `Reentran
 - "Esperando stock" **no es un estado guardado**: se deduce del inventario al armar el snapshot (qué productos y
   cuántas unidades faltan), así nunca queda desactualizado.
 - Con la política vigente un pedido grande sin stock puede ser postergado por pedidos chicos que sí tienen; es el
-  mismo fenómeno de inanición que SJF, y se verá en el comparador (paso 8).
+  mismo fenómeno de inanición que SJF, y se ve en el comparador.
 
 ## 6. Almacenamiento
 
@@ -336,6 +368,7 @@ El usuario elige cuál de las dos operaciones continúa; la otra es **expulsada*
 | Generador de pedidos | 1 | `SimClock` + `Condition` de configuración |
 | Detector de deadlock | 1 | Lecturas por pool + confirmación por estabilidad |
 | Broadcaster de snapshots | 1 | Lecturas con locks breves |
+| Comparador de políticas | 1 mientras compara (+ los hilos de la corrida en curso) | Registro inmutable `volatile`; interrupción para cancelar |
 
 Los pools son monitores propios y no `Semaphore` porque hay que saber quién retiene y quién espera,
 conceder por prioridad y poder expulsar a quien espera.
@@ -366,5 +399,5 @@ colores y espaciados solo desde `styles/tokens.css`.
 |---|---|
 | 1–7 oct | Dominio, pools, planificador, tests de consola |
 | 8–14 oct | Inventario, almacén, recepción, detector y resolución de deadlock |
-| 15–21 oct | UI completa, benchmark, estadísticas |
+| 15–21 oct | UI completa, comparador de políticas, estadísticas |
 | 22–26 oct | Pulido, tests, manual técnico y manual de usuario |
