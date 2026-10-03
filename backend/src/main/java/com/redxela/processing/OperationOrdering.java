@@ -10,8 +10,11 @@ import java.util.Comparator;
  * recursos (que ordenan operaciones). Así la misma política decide quién entra primero a una
  * estación, no solo quién sale primero de la lista de espera.
  *
- * <p>Las operaciones que no son pedidos van después de los pedidos y empatan entre sí. El criterio
- * es un orden total consistente, requisito para que los pools puedan ordenar sin fallar.
+ * <p>Las operaciones que no son pedidos (los camiones de recepción) van <b>antes</b> que los pedidos
+ * y empatan entre sí, de modo que entre ellos desempata el orden de llegada al pool. Es una decisión
+ * deliberada: la recepción es finita y desbloquea el flujo de stock, mientras que si fuera al revés,
+ * bajo carga los camiones podrían no llegar a atenderse nunca. El criterio es un orden total
+ * consistente, requisito para que los pools puedan ordenar sin fallar.
  */
 public final class OperationOrdering {
 
@@ -25,10 +28,10 @@ public final class OperationOrdering {
                 return byPolicy.compare(a.queued(), b.queued());
             }
             if (first instanceof OrderExecution) {
-                return -1;
+                return 1;
             }
             if (second instanceof OrderExecution) {
-                return 1;
+                return -1;
             }
             return 0;
         };

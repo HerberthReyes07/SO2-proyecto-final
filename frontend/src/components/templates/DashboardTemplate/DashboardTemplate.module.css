@@ -48,8 +48,12 @@
     align-items: start;
   }
 
+  /* Si los formularios no caben en pantalla, la columna desplaza su propio contenido en vez de cortarlo. */
   .sidebar {
     position: sticky;
     top: var(--space-4);
+    max-height: calc(100vh - 2 * var(--space-4));
+    overflow-y: auto;
+    padding-right: var(--space-1);
   }
 }

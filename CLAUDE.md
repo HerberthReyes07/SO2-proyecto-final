@@ -20,7 +20,7 @@ Enunciado: `reference/Proyecto Final.md`. Diseño acordado: `docs/PROPUESTA.md`.
 - Todo comentario debe explicar el *por qué* (sobre todo decisiones de sincronización); no repetir el *qué*.
 - Manejo explícito de excepciones; nunca `catch` vacío. Las interrupciones se propagan o restauran el flag.
 - **Backend:** el núcleo (`domain`, `resources`, `processing`, `orders`, `catalog`, `customers`, `scheduling`,
-  `generator`, `inventory`, `sim`, `stats`) es Java plano; solo `api` conoce Javalin. `ApplicationComponents` es la raíz de
+  `generator`, `inventory`, `reception`, `sim`, `stats`) es Java plano; solo `api` conoce Javalin. `ApplicationComponents` es la raíz de
   composición (lo único que conoce a todos). Dependencias hacia el dominio, nunca al revés. Estado compartido:
   o es inmutable, o se protege con un lock documentado. Tests de concurrencia deterministas (latches, esperas con timeout),
   corridos varias veces para detectar intermitencias.

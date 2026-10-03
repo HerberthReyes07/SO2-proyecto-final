@@ -18,12 +18,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 @Timeout(value = 20, unit = TimeUnit.SECONDS)
 class WaitingListTest {
+
+    private static final Predicate<QueuedOrder> ANY = queued -> true;
 
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -42,10 +45,10 @@ class WaitingListTest {
         list.add(queued("economy", ECONOMY, 1, 1));
         list.add(queued("express", EXPRESS, 1, 2));
 
-        assertThat(list.takeBest()).map(entry -> entry.order().id()).contains("express");
+        assertThat(list.takeBest(ANY)).map(entry -> entry.order().id()).contains("express");
         assertThat(list.size()).isEqualTo(1);
-        assertThat(list.takeBest()).map(entry -> entry.order().id()).contains("economy");
-        assertThat(list.takeBest()).isEmpty();
+        assertThat(list.takeBest(ANY)).map(entry -> entry.order().id()).contains("economy");
+        assertThat(list.takeBest(ANY)).isEmpty();
     }
 
     @Test
@@ -69,7 +72,7 @@ class WaitingListTest {
 
         assertThat(list.policy()).isEqualTo(SchedulingPolicy.SHORTEST_JOB_FIRST);
         assertThat(list.snapshot()).extracting(entry -> entry.order().id()).containsExactly("small-economy", "big-express");
-        assertThat(list.takeBest()).map(entry -> entry.order().id()).contains("small-economy");
+        assertThat(list.takeBest(ANY)).map(entry -> entry.order().id()).contains("small-economy");
     }
 
     @Test
@@ -77,7 +80,7 @@ class WaitingListTest {
         WaitingList list = new WaitingList(SchedulingPolicy.FIFO);
         AtomicBoolean released = new AtomicBoolean();
         Future<?> waiter = executor.submit(() -> {
-            list.awaitNotEmpty();
+            list.awaitEligible(ANY);
             released.set(true);
             return null;
         });
@@ -96,7 +99,7 @@ class WaitingListTest {
     void awaiting_can_be_interrupted() {
         WaitingList list = new WaitingList(SchedulingPolicy.FIFO);
         Future<?> waiter = executor.submit(() -> {
-            list.awaitNotEmpty();
+            list.awaitEligible(ANY);
             return null;
         });
 
@@ -114,8 +117,8 @@ class WaitingListTest {
 
         Future<?> consumer = executor.submit(() -> {
             while (taken.size() < producers * perProducer) {
-                list.awaitNotEmpty();
-                list.takeBest().ifPresent(entry -> taken.add(entry.order().id()));
+                list.awaitEligible(ANY);
+                list.takeBest(ANY).ifPresent(entry -> taken.add(entry.order().id()));
             }
             return null;
         });

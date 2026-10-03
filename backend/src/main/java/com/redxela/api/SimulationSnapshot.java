@@ -1,8 +1,10 @@
 package com.redxela.api;
 
 import com.redxela.generator.GeneratorSnapshot;
+import com.redxela.inventory.InventorySnapshot;
 import com.redxela.processing.OrderProgressSnapshot;
 import com.redxela.processing.SchedulingSnapshot;
+import com.redxela.reception.ReceptionSnapshot;
 import com.redxela.resources.PoolSnapshot;
 import com.redxela.sim.ClockSnapshot;
 import com.redxela.stats.StatsSnapshot;
@@ -17,6 +19,8 @@ import java.util.List;
  * @param scheduling      política vigente y lista de espera
  * @param generator       estado del generador automático de pedidos
  * @param stats           estadísticas de los pedidos despachados
+ * @param inventory       existencias, buffer de recepción y estado del procesamiento de Inventario
+ * @param reception       camiones en Recepción
  * @param resources       estado de cada pool de recursos
  * @param activeOrders    pedidos en proceso, en orden de llegada
  * @param completedOrders cantidad de pedidos ya despachados
@@ -26,6 +30,8 @@ public record SimulationSnapshot(
         SchedulingSnapshot scheduling,
         GeneratorSnapshot generator,
         StatsSnapshot stats,
+        InventorySnapshot inventory,
+        ReceptionSnapshot reception,
         List<PoolSnapshot> resources,
         List<OrderProgressSnapshot> activeOrders,
         long completedOrders) {

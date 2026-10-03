@@ -25,7 +25,7 @@ export interface PoolSnapshot {
 /** Etapas por las que pasa un pedido, en orden. */
 export type Stage = 'PICKING' | 'INSPECTION' | 'PACKING' | 'DISPATCH'
 
-export type OrderStatus = 'WAITING' | 'WAITING_STOCK' | 'PROCESSING' | 'COMPLETED'
+export type OrderStatus = 'WAITING' | 'PROCESSING' | 'COMPLETED'
 
 /** Avance de un pedido en proceso. */
 export interface OrderProgress {
@@ -45,6 +45,13 @@ export interface OrderProgress {
   remainingMillis: number
 }
 
+/** Faltante de un producto para poder atender un pedido. */
+export interface MissingStock {
+  productId: string
+  /** Unidades que faltan (siempre positivo). */
+  missingUnits: number
+}
+
 /** Un pedido en la lista de espera. */
 export interface WaitingOrder {
   orderId: string
@@ -55,6 +62,8 @@ export interface WaitingOrder {
   waitedMillis: number
   /** Tiempo máximo de espera objetivo de su nivel, en ms; si se supera, el pedido está retrasado. */
   targetWaitMillis: number
+  /** Productos de los que falta stock; mientras no esté vacío el pedido no puede admitirse. */
+  missingStock: MissingStock[]
 }
 
 /** Política vigente y lista de espera. */
@@ -113,12 +122,70 @@ export interface StatsSnapshot {
   levels: LevelStats[]
 }
 
+/** Existencias de un producto. */
+export interface StockItem {
+  productId: string
+  /** Unidades libres, que pueden reservarse para nuevos pedidos. */
+  available: number
+  /** Unidades apartadas para pedidos en proceso que aún no se despachan. */
+  reserved: number
+}
+
+/** Estado del buffer entre Recepción e Inventario. */
+export interface ReceptionBufferState {
+  capacity: number
+  size: number
+  /** Camiones esperando espacio: Recepción va más rápido que Inventario (contrapresión). */
+  blockedProducers: number
+  accepted: number
+  delivered: number
+}
+
+/** Mensaje con el que Recepción informa a Inventario qué mercadería llegó. */
+export interface ReceptionMessage {
+  truckId: string
+  productId: string
+  quantity: number
+}
+
+export interface InventoryWorkerState {
+  /** Mensaje que Inventario procesa ahora, o null si está ocioso. */
+  processing: ReceptionMessage | null
+  processed: number
+}
+
+export interface InventoryState {
+  stock: StockItem[]
+  buffer: ReceptionBufferState
+  worker: InventoryWorkerState
+}
+
+export type TruckPhase = 'WAITING_RESOURCES' | 'UNLOADING' | 'REPORTING'
+
+/** Un camión en Recepción. */
+export interface Truck {
+  truckId: string
+  productId: string
+  quantity: number
+  phase: TruckPhase
+  awaiting: ResourceType | null
+  held: ResourceType[]
+  /** Avance de la descarga, entre 0 y 1. */
+  progress: number
+}
+
+export interface ReceptionState {
+  trucks: Truck[]
+}
+
 /** Estado completo del centro de distribución. */
 export interface SimulationSnapshot {
   clock: ClockSnapshot
   scheduling: SchedulingSnapshot
   generator: GeneratorState
   stats: StatsSnapshot
+  inventory: InventoryState
+  reception: ReceptionState
   resources: PoolSnapshot[]
   activeOrders: OrderProgress[]
   completedOrders: number

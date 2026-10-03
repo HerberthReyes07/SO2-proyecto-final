@@ -1,5 +1,11 @@
 import type { CatalogResponse, Customer, ServiceLevelInfo } from '@/types/catalog'
-import { buildCustomerOptions, buildProductOptions, buildServiceLevelOptions, describeTargetWait } from './options'
+import {
+  buildCustomerOptions,
+  buildProductOptions,
+  buildServiceLevelOptions,
+  describeTargetWait,
+  productNames,
+} from './options'
 
 const express: ServiceLevelInfo = { id: 'EXPRESS', level: 1, displayName: 'Exprés', targetWaitMinutes: 1 }
 const priority: ServiceLevelInfo = { id: 'PRIORITY', level: 2, displayName: 'Prioritario', targetWaitMinutes: 10 }
@@ -44,5 +50,18 @@ describe('buildCustomerOptions', () => {
     const customers: Customer[] = [{ id: 'CUS-001', name: 'Aurora Tech', level: 'EXPRESS' }]
 
     expect(buildCustomerOptions(customers, [express])).toEqual([{ value: 'CUS-001', label: 'Aurora Tech · Exprés' }])
+  })
+})
+
+describe('productNames', () => {
+  it('indexes the product names by id', () => {
+    const catalog: CatalogResponse = {
+      products: [{ id: 'P-007', name: 'Refrigeradora', type: 'HEAVY', unitVolume: 60 }],
+      merchandiseTypes: [],
+      serviceLevels: [],
+      policies: [],
+    }
+
+    expect(productNames(catalog)).toEqual({ 'P-007': 'Refrigeradora' })
   })
 })

@@ -146,13 +146,61 @@ reloj simulado, así que se congela al pausar.
 
 ## 5. Recepción → Inventario
 
-- Buffer acotado productor/consumidor implementado a mano (`ReentrantLock` + dos `Condition`), capacidad ~10.
-- Si se llena, Recepción espera con contrapresión (timeout y reintento visibles): sin pérdida de datos ni espera indefinida.
-- Inventario consume en su propio hilo, más lento que Recepción. Su estado se protege con `ReentrantReadWriteLock`
-  y solo se toca por su API (`reserve`, `consume`, `release`).
-- Reservas atómicas de todo o nada: evitan sobreventa y eliminan el *hold-and-wait* sobre el stock.
-- Al procesar una llegada, Inventario emite `StockUpdated(product)`; el planificador mueve los pedidos de
-  "esperando stock" a "listos" sin tocar las estructuras de Inventario.
+Son dos áreas independientes que **solo se comunican por mensajes**: ninguna toca las estructuras de la otra.
+
+### Recepción (`ReceptionService`)
+
+Cada camión que llega es una operación (un hilo) que toma el escáner y un andén de carga, descarga y registra la
+mercadería (1 s simulado por unidad), los suelta y recién entonces informa a Inventario con un `ReceptionMessage`.
+La interfaz permite registrar varios camiones iguales a la vez, para provocar una ráfaga.
+
+- **Suelta los recursos antes de reportar.** Si los retuviera mientras espera espacio en el buffer, un Inventario
+  lento dejaría el único escáner ocupado por camiones que ya terminaron de descargar y paralizaría los despachos.
+  Así un buffer lleno solo hace esperar al camión que reporta. Hay un test que lo comprueba y una mutación que lo rompe.
+- **Orden de adquisición:** escáner → andén, el orden global, igual que los pedidos. El orden inverso (andén →
+  escáner), que provoca el deadlock de la demo, se introduce en el paso 7 junto con su detección y resolución.
+- **Prioridad en los recursos:** los camiones van antes que los pedidos en las filas de los pools (`OperationOrdering`).
+  La recepción es finita y desbloquea el flujo de stock; si fuera al revés, bajo carga los camiones podrían no llegar
+  a atenderse nunca.
+- Límites: hasta 1.000 unidades por camión, 50 camiones por solicitud y 100 pendientes en total (una ráfaga no crea
+  hilos sin límite).
+
+### El buffer (`ReceptionBuffer`)
+
+Productor/consumidor acotado (capacidad 10) implementado a mano con un `ReentrantLock` y dos `Condition`.
+
+- **Sin pérdida de datos:** si está lleno, el productor *espera*; el mensaje nunca se descarta.
+- **Sin bloqueo indefinido:** el consumidor siempre progresa y no depende de nada que el productor retenga (los
+  camiones ya soltaron sus recursos), así que el espacio siempre termina liberándose. La espera es interrumpible.
+- **Contrapresión visible:** el buffer cuenta los productores bloqueados y la interfaz lo muestra.
+- **Dos condiciones:** `notFull` la esperan los productores y `notEmpty` el consumidor; con una sola, cada `signal`
+  podría despertar a alguien del otro grupo. Al interrumpirse un hilo que ya había sido señalado, pasa la señal al
+  siguiente para no perder el despertar.
+
+### Inventario (`Inventory`, `InventoryWorker`)
+
+- Un hilo propio retira los mensajes a su ritmo (20 s simulados fijos + 1 s por unidad, deliberadamente más lento
+  que la llegada de camiones para que se vea llenarse el buffer), suma el stock y **avisa** que cambió el stock de
+  ese producto.
+- El estado se protege con un `ReentrantReadWriteLock`: las consultas (snapshots, varias por segundo) comparten el
+  lock de lectura; las modificaciones, raras, toman el de escritura.
+- **Reserva de todo o nada:** un pedido reserva todas sus líneas en una operación atómica, o ninguna. Verificar y
+  descontar ocurren bajo el mismo lock, sin hueco entre ambos: no hay sobreventa y ningún pedido retiene stock
+  parcial esperando el resto (eliminaría el *hold-and-wait* sobre el inventario).
+- Ciclo del stock: `disponible → reservado` al admitir el pedido; al despacharlo las unidades **salen**; si el
+  pedido se aborta **vuelven** a disponible (`StockHandling`, un listener del ciclo de vida del pedido).
+- Existencias iniciales: 300 unidades de cada producto.
+
+### Pedidos que esperan stock
+
+- El despachador solo admite pedidos **elegibles** (hay stock para todas sus líneas); a uno al que le falta se lo
+  salta y pasa adelante el siguiente mejor según la política. Mientras espera no retiene nada.
+- Cuando Inventario procesa una llegada avisa al planificador (`stockChanged`), que despierta al despachador para
+  que reevalúe la lista. El planificador nunca toca las estructuras de Inventario.
+- "Esperando stock" **no es un estado guardado**: se deduce del inventario al armar el snapshot (qué productos y
+  cuántas unidades faltan), así nunca queda desactualizado.
+- Con la política vigente un pedido grande sin stock puede ser postergado por pedidos chicos que sí tienen; es el
+  mismo fenómeno de inanición que SJF, y se verá en el comparador (paso 8).
 
 ## 6. Almacenamiento
 
@@ -191,8 +239,8 @@ Dos camiones ocupan las 2 áreas de carga y un despacho sostiene el escáner.
 |---|---|---|
 | Despachador | 1 | `WaitingList` (`Lock` + `Condition`) + `ResourcePool.awaitAvailableUnit` |
 | Operación de pedido | ≤ 10 en proceso (uno por encargado) | `ResourcePool` (`ReentrantLock` + `Condition`) |
-| Operación de recepción | pocas | Pools + productor del buffer |
-| Consumidor de Inventario | 1 | Buffer acotado + `ReadWriteLock` |
+| Camión de recepción | uno por camión (tope 100) | Pools + productor del buffer |
+| Consumidor de Inventario | 1 | Buffer acotado (`Lock` + 2 `Condition`) + `ReadWriteLock` |
 | Generador de pedidos | 1 | `SimClock` + `Condition` de configuración |
 | Detector de deadlock | 1 | Snapshot bajo el lock del gestor |
 | Broadcaster de snapshots | 1 | Lecturas con locks breves |

@@ -6,8 +6,10 @@ import static com.redxela.domain.ServiceLevel.STANDARD;
 import static com.redxela.testsupport.TestOrders.STANDARD_PRODUCT;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.redxela.catalog.ProductCatalog;
 import com.redxela.domain.ResourceType;
 import com.redxela.domain.ServiceLevel;
+import com.redxela.inventory.Inventory;
 import com.redxela.resources.OperationPreemptedException;
 import com.redxela.resources.ResourcePool;
 import com.redxela.resources.ResourceRegistry;
@@ -35,6 +37,8 @@ import org.junit.jupiter.api.Timeout;
 class DispatcherTest {
 
     private final SimClock clock = new SimClock();
+    // Existencias de sobra: estos tests no se ocupan del stock.
+    private final Inventory inventory = new Inventory(ProductCatalog.defaultCatalog(), 1_000);
     private final ResourceRegistry resources = new ResourceRegistry();
     private final ResourcePool workers = resources.pool(ResourceType.WAREHOUSE_WORKER);
     private OrderProcessor processor;
@@ -45,7 +49,7 @@ class DispatcherTest {
         clock.pause();
         OrderWorkflow workflow = new OrderWorkflow(resources, clock);
         processor = new OrderProcessor(workflow, ProcessingTimes.defaults());
-        scheduler = new OrderScheduler(clock, resources, workflow, processor);
+        scheduler = new OrderScheduler(clock, resources, workflow, processor, inventory);
     }
 
     @AfterEach

@@ -40,3 +40,8 @@ export function buildCustomerOptions(customers: readonly Customer[], levels: rea
 export function serviceLevelNames(levels: readonly ServiceLevelInfo[]): Record<string, string> {
   return Object.fromEntries(levels.map((level) => [level.id, level.displayName]))
 }
+
+/** Diccionario id de producto → nombre mostrado. */
+export function productNames(catalog: CatalogResponse): Record<string, string> {
+  return Object.fromEntries(catalog.products.map((product) => [product.id, product.name]))
+}

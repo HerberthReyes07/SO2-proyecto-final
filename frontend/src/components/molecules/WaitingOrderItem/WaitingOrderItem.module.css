@@ -56,3 +56,9 @@
 .criterion {
   color: var(--color-text);
 }
+
+.stockWarning {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-warning);
+}

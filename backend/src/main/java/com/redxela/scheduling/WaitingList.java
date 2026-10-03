@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Predicate;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -16,14 +17,21 @@ import java.util.concurrent.locks.ReentrantLock;
  * lista, elegir al mejor es un recorrido (O(n)) con la política vigente en ese instante, y el
  * cambio de política es inmediato.
  *
+ * <h3>Elegibilidad</h3>
+ * No todo pedido en la lista puede atenderse ya (por ejemplo, si falta stock). El consumidor indica
+ * con un predicado cuáles son elegibles, y la lista elige al mejor <i>entre esos</i>. Cuando algo
+ * cambia fuera de la lista (llegó stock), {@link #reevaluate()} despierta al consumidor para que
+ * vuelva a preguntar.
+ *
  * <h3>Sincronización</h3>
  * Un {@link ReentrantLock} protege la lista y la política. El despachador, único consumidor,
- * espera en la {@link Condition} {@code notEmpty} hasta que llegue algún pedido.
+ * espera en la {@link Condition} {@code changed} hasta que haya un pedido elegible. El predicado se
+ * evalúa con el lock de la lista tomado, así que no debe llamar a nada que a su vez espere por la lista.
  */
 public final class WaitingList {
 
     private final ReentrantLock lock = new ReentrantLock();
-    private final Condition notEmpty = lock.newCondition();
+    private final Condition changed = lock.newCondition();
     private final List<QueuedOrder> entries = new ArrayList<>();
     private SchedulingPolicy policy;
 
@@ -31,38 +39,51 @@ public final class WaitingList {
         this.policy = Objects.requireNonNull(initialPolicy, "initialPolicy");
     }
 
-    /** Agrega un pedido y despierta al despachador si estaba esperando. */
+    /** Agrega un pedido y despierta al despachador si estaba esperando. Sirve también para devolver un pedido a la lista. */
     public void add(QueuedOrder queued) {
         Objects.requireNonNull(queued, "queued");
         lock.lock();
         try {
             entries.add(queued);
-            notEmpty.signal();
+            changed.signalAll();
         } finally {
             lock.unlock();
         }
     }
 
     /**
-     * Bloquea hasta que haya al menos un pedido. No lo retira: la elección del mejor se hace
-     * después, con {@link #takeBest()}, lo más tarde posible.
+     * Bloquea hasta que haya al menos un pedido elegible. No lo retira: la elección del mejor se
+     * hace después, con {@link #takeBest}, lo más tarde posible.
      */
-    public void awaitNotEmpty() throws InterruptedException {
+    public void awaitEligible(Predicate<QueuedOrder> eligible) throws InterruptedException {
         lock.lockInterruptibly();
         try {
-            while (entries.isEmpty()) {
-                notEmpty.await();
+            while (entries.stream().noneMatch(eligible)) {
+                changed.await();
             }
         } finally {
             lock.unlock();
         }
     }
 
-    /** Retira y devuelve el pedido que la política vigente atendería primero, si hay alguno. */
-    public Optional<QueuedOrder> takeBest() {
+    /**
+     * Despierta a quien espera un pedido elegible para que vuelva a evaluar el predicado, porque
+     * algo que lo afecta cambió fuera de la lista (ej. llegó stock de un producto).
+     */
+    public void reevaluate() {
         lock.lock();
         try {
-            Optional<QueuedOrder> best = entries.stream().min(policy.comparator());
+            changed.signalAll();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** Retira y devuelve el pedido elegible que la política vigente atendería primero, si hay alguno. */
+    public Optional<QueuedOrder> takeBest(Predicate<QueuedOrder> eligible) {
+        lock.lock();
+        try {
+            Optional<QueuedOrder> best = entries.stream().filter(eligible).min(policy.comparator());
             best.ifPresent(entries::remove);
             return best;
         } finally {

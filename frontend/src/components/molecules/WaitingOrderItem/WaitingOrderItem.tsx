@@ -11,6 +11,8 @@ export interface WaitingOrderItemProps {
   /** Dato que la política vigente usa para ordenar este pedido (ej. "Vence en 3 min 10 s"). */
   criterion: string
   overdue: boolean
+  /** Productos de los que falta stock (ej. "Camiseta (faltan 5)"); si se omite, el pedido tiene todo lo que necesita. */
+  stockWarning?: string
 }
 
 /** Una fila de la lista de espera. */
@@ -22,6 +24,7 @@ export function WaitingOrderItem({
   totalItems,
   criterion,
   overdue,
+  stockWarning,
 }: WaitingOrderItemProps) {
   return (
     <li className={styles.item}>
@@ -34,10 +37,12 @@ export function WaitingOrderItem({
           <span className={styles.customer}>{customerName}</span>
           <Badge>{serviceLevelLabel}</Badge>
           {overdue && <Badge tone="danger">Retrasado</Badge>}
+          {stockWarning && <Badge tone="warning">Sin stock</Badge>}
         </div>
         <p className={styles.meta}>
           {totalItems} artículos · <strong className={styles.criterion}>{criterion}</strong>
         </p>
+        {stockWarning && <p className={styles.stockWarning}>{stockWarning}</p>}
       </div>
     </li>
   )

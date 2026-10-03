@@ -12,7 +12,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,7 +34,7 @@ public final class OrderProcessor implements AutoCloseable {
     private final Map<String, OrderExecution> active = new ConcurrentHashMap<>();
     private final AtomicLong completed = new AtomicLong();
     // Se recorre desde los hilos de los pedidos y se modifica rara vez (al armar la aplicación).
-    private final List<Consumer<CompletedOrder>> completionListeners = new CopyOnWriteArrayList<>();
+    private final List<OrderLifecycleListener> listeners = new CopyOnWriteArrayList<>();
 
     public OrderProcessor(OrderWorkflow workflow, ProcessingTimes times) {
         this.workflow = workflow;
@@ -43,11 +42,11 @@ public final class OrderProcessor implements AutoCloseable {
     }
 
     /**
-     * Registra a alguien que quiere enterarse de cada pedido despachado (ej. las estadísticas).
-     * Se invoca en el hilo del pedido, así que debe ser rápido y seguro entre hilos.
+     * Registra a alguien que quiere enterarse de cómo termina cada pedido (ej. las estadísticas o el
+     * inventario). Se invoca en el hilo del pedido, así que debe ser rápido y seguro entre hilos.
      */
-    public void addCompletionListener(Consumer<CompletedOrder> listener) {
-        completionListeners.add(listener);
+    public void addListener(OrderLifecycleListener listener) {
+        listeners.add(listener);
     }
 
     /** Crea la ejecución de un pedido que salió de la lista de espera, con su plan de etapas. */
@@ -91,23 +90,36 @@ public final class OrderProcessor implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt(); // el procesador se está cerrando
             LOG.info("Order {} interrupted", execution.id());
+            notifyAborted(execution.id());
         } catch (OperationPreemptedException e) {
             // Aún no hay resolución de deadlock; cuando exista, el pedido volverá a la lista de espera.
             LOG.warn("Order {} was preempted: {}", execution.id(), e.getMessage());
+            notifyAborted(execution.id());
         } catch (RuntimeException e) {
             LOG.error("Order {} failed", execution.id(), e);
+            notifyAborted(execution.id());
         } finally {
             active.remove(execution.id());
         }
     }
 
     private void notifyCompleted(CompletedOrder summary) {
-        for (Consumer<CompletedOrder> listener : completionListeners) {
+        for (OrderLifecycleListener listener : listeners) {
             try {
-                listener.accept(summary);
+                listener.onCompleted(summary);
             } catch (RuntimeException e) {
                 // Un listener defectuoso no debe afectar al pedido ni a los demás listeners.
                 LOG.error("Completion listener failed for {}", summary.orderId(), e);
+            }
+        }
+    }
+
+    private void notifyAborted(String orderId) {
+        for (OrderLifecycleListener listener : listeners) {
+            try {
+                listener.onAborted(orderId);
+            } catch (RuntimeException e) {
+                LOG.error("Abort listener failed for {}", orderId, e);
             }
         }
     }

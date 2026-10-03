@@ -58,7 +58,7 @@ class OrderProcessorTest {
     void notifies_the_listeners_of_every_completed_order() throws Exception {
         clock.setSpeed(SimClock.MAX_SPEED);
         List<CompletedOrder> summaries = new CopyOnWriteArrayList<>();
-        processor.addCompletionListener(summaries::add);
+        processor.addListener(OrderLifecycleListener.onCompleted(summaries::add));
 
         for (int i = 0; i < 3; i++) {
             workflow.awaitFreeWorker();
@@ -73,10 +73,10 @@ class OrderProcessorTest {
     void a_failing_listener_neither_breaks_the_order_nor_hides_it_from_the_other_listeners() throws Exception {
         clock.setSpeed(SimClock.MAX_SPEED);
         List<CompletedOrder> summaries = new CopyOnWriteArrayList<>();
-        processor.addCompletionListener(summary -> {
+        processor.addListener(OrderLifecycleListener.onCompleted(summary -> {
             throw new IllegalStateException("broken listener");
-        });
-        processor.addCompletionListener(summaries::add);
+        }));
+        processor.addListener(OrderLifecycleListener.onCompleted(summaries::add));
 
         admit(TestOrders.order("O-1", STANDARD_PRODUCT, 2));
 
@@ -88,7 +88,7 @@ class OrderProcessorTest {
     void does_not_notify_orders_that_were_interrupted_before_finishing() throws Exception {
         clock.pause();
         List<CompletedOrder> summaries = new CopyOnWriteArrayList<>();
-        processor.addCompletionListener(summaries::add);
+        processor.addListener(OrderLifecycleListener.onCompleted(summaries::add));
         admit(TestOrders.order("O-1", HEAVY_PRODUCT, 2));
         Await.until("working", () -> registry.pool(ResourceType.FORKLIFT).snapshot().holders().contains("O-1"));
 

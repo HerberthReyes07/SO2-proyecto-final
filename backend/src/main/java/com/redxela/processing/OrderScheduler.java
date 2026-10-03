@@ -2,6 +2,7 @@ package com.redxela.processing;
 
 import com.redxela.domain.Order;
 import com.redxela.domain.QueuedOrder;
+import com.redxela.inventory.Inventory;
 import com.redxela.resources.ResourceRegistry;
 import com.redxela.scheduling.SchedulingPolicy;
 import com.redxela.scheduling.WaitingList;
@@ -27,15 +28,18 @@ public final class OrderScheduler implements AutoCloseable {
 
     private final SimClock clock;
     private final ResourceRegistry resources;
+    private final Inventory inventory;
     private final WaitingList waitingList = new WaitingList(DEFAULT_POLICY);
     private final AtomicLong arrivals = new AtomicLong();
     private final Dispatcher dispatcher;
     private Thread dispatcherThread;
 
-    public OrderScheduler(SimClock clock, ResourceRegistry resources, OrderWorkflow workflow, OrderProcessor processor) {
+    public OrderScheduler(SimClock clock, ResourceRegistry resources, OrderWorkflow workflow,
+                          OrderProcessor processor, Inventory inventory) {
         this.clock = clock;
         this.resources = resources;
-        this.dispatcher = new Dispatcher(waitingList, workflow, processor);
+        this.inventory = inventory;
+        this.dispatcher = new Dispatcher(waitingList, workflow, processor, inventory);
         resources.setWaitingOrder(OperationOrdering.of(DEFAULT_POLICY));
     }
 
@@ -49,6 +53,14 @@ public final class OrderScheduler implements AutoCloseable {
     /** Un pedido nuevo entra a la lista de espera, con la hora simulada actual como hora de llegada. */
     public void enqueue(Order order) {
         waitingList.add(new QueuedOrder(order, clock.now(), arrivals.incrementAndGet()));
+    }
+
+    /**
+     * Avisa que cambió el stock de un producto: los pedidos a los que les faltaba pueden haber pasado a
+     * ser atendibles, así que se despierta al despachador para que vuelva a evaluarlos.
+     */
+    public void stockChanged() {
+        waitingList.reevaluate();
     }
 
     public SchedulingPolicy policy() {
@@ -77,7 +89,7 @@ public final class OrderScheduler implements AutoCloseable {
         return new SchedulingSnapshot(policy, waiting.size(), visible);
     }
 
-    private static WaitingOrderSnapshot toSnapshot(QueuedOrder queued, Duration now) {
+    private WaitingOrderSnapshot toSnapshot(QueuedOrder queued, Duration now) {
         Order order = queued.order();
         return new WaitingOrderSnapshot(
                 order.id(),
@@ -85,7 +97,8 @@ public final class OrderScheduler implements AutoCloseable {
                 order.serviceLevel(),
                 order.totalItems(),
                 queued.waitedAt(now).toMillis(),
-                order.serviceLevel().targetWait().toMillis());
+                order.serviceLevel().targetWait().toMillis(),
+                inventory.missingFor(order));
     }
 
     /** Detiene el hilo despachador. */

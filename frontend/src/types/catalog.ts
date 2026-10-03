@@ -74,3 +74,15 @@ export interface OrderConfirmation {
   orderId: string
   totalItems: number
 }
+
+export interface RegisterArrivalRequest {
+  productId: string
+  /** Unidades que trae cada camión. */
+  quantity: number
+  /** Cantidad de camiones iguales (por defecto 1); varios permiten provocar una ráfaga. */
+  trucks?: number
+}
+
+export interface ArrivalConfirmation {
+  truckIds: string[]
+}

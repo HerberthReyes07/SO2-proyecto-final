@@ -8,6 +8,7 @@ import com.redxela.customers.CustomerRegistry;
 import com.redxela.domain.Order;
 import com.redxela.domain.OrderLine;
 import com.redxela.domain.ServiceLevel;
+import com.redxela.inventory.Inventory;
 import com.redxela.processing.OrderProcessor;
 import com.redxela.processing.OrderScheduler;
 import com.redxela.processing.OrderWorkflow;
@@ -24,6 +25,8 @@ class OrderServiceTest {
     private static final String EXPRESS_CUSTOMER = "CUS-001"; // Aurora Tech, nivel Exprés (ver CustomerRegistry)
 
     private final SimClock clock = new SimClock();
+    // Existencias de sobra: estos tests no se ocupan del stock.
+    private final Inventory inventory = new Inventory(ProductCatalog.defaultCatalog(), 1_000);
     private OrderProcessor processor;
     private OrderScheduler scheduler;
     private OrderService service;
@@ -35,7 +38,7 @@ class OrderServiceTest {
         ResourceRegistry resources = new ResourceRegistry();
         OrderWorkflow workflow = new OrderWorkflow(resources, clock);
         processor = new OrderProcessor(workflow, ProcessingTimes.defaults());
-        scheduler = new OrderScheduler(clock, resources, workflow, processor);
+        scheduler = new OrderScheduler(clock, resources, workflow, processor, inventory);
         service = new OrderService(ProductCatalog.defaultCatalog(), CustomerRegistry.withSampleCustomers(), scheduler);
     }
 

@@ -42,15 +42,16 @@ class OperationOrderingTest {
     }
 
     @Test
-    void places_orders_before_other_operations_and_ties_the_others() {
+    void places_other_operations_such_as_trucks_before_orders_and_ties_them_with_each_other() {
         var ordering = OperationOrdering.of(SchedulingPolicy.STRICT_PRIORITY);
-        OrderExecution order = execution("order", ECONOMY, 1);
-        FakeOperation other = new FakeOperation("other");
-        FakeOperation another = new FakeOperation("another");
+        OrderExecution order = execution("order", EXPRESS, 1);
+        FakeOperation truck = new FakeOperation("truck");
+        FakeOperation anotherTruck = new FakeOperation("another-truck");
 
-        assertThat(ordering.compare(order, other)).isNegative();
-        assertThat(ordering.compare(other, order)).isPositive();
-        assertThat(ordering.compare(other, another)).isZero();
+        // Aun un pedido Exprés va después de un camión: la recepción es finita y desbloquea el stock.
+        assertThat(ordering.compare(truck, order)).isNegative();
+        assertThat(ordering.compare(order, truck)).isPositive();
+        assertThat(ordering.compare(truck, anotherTruck)).isZero();
     }
 
     @Test
@@ -62,6 +63,6 @@ class OperationOrderingTest {
 
         mixed.sort(ordering);
 
-        assertThat(mixed).extracting(Operation::id).containsExactly("express", "economy", "x", "y");
+        assertThat(mixed).extracting(Operation::id).containsExactly("x", "y", "express", "economy");
     }
 }

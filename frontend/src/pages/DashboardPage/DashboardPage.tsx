@@ -1,11 +1,16 @@
+import { useState } from 'react'
 import { Badge } from '@/components/atoms/Badge'
 import { ActiveOrdersPanel } from '@/components/organisms/ActiveOrdersPanel'
 import { ClockPanel } from '@/components/organisms/ClockPanel'
 import { CustomerForm } from '@/components/organisms/CustomerForm'
 import { GeneratorPanel } from '@/components/organisms/GeneratorPanel'
+import { InventoryPanel } from '@/components/organisms/InventoryPanel'
 import { OrderForm } from '@/components/organisms/OrderForm'
+import { ReceptionForm } from '@/components/organisms/ReceptionForm'
+import { ReceptionPanel } from '@/components/organisms/ReceptionPanel'
 import { ResourcePanel } from '@/components/organisms/ResourcePanel'
 import { StatsPanel } from '@/components/organisms/StatsPanel'
+import { TabbedContent } from '@/components/organisms/TabbedContent'
 import { WaitingListPanel } from '@/components/organisms/WaitingListPanel'
 import { DashboardTemplate } from '@/components/templates/DashboardTemplate'
 import { useClockControls } from '@/hooks/useClockControls'
@@ -16,9 +21,11 @@ import { useSimulationStream } from '@/hooks/useSimulationStream'
 import { createCustomer } from '@/services/customerApi'
 import { updateGenerator } from '@/services/generatorApi'
 import { placeOrder } from '@/services/orderApi'
+import { registerArrival } from '@/services/receptionApi'
 import { changePolicy } from '@/services/schedulingApi'
 import { resetStats } from '@/services/statsApi'
-import type { CreateCustomerRequest, PlaceOrderRequest, PolicyId } from '@/types/catalog'
+import { describeArrival } from '@/utils/describeArrival'
+import type { CreateCustomerRequest, PlaceOrderRequest, PolicyId, RegisterArrivalRequest } from '@/types/catalog'
 import type { ConnectionStatus } from '@/types/simulation'
 
 const CONNECTION_BADGES: Record<ConnectionStatus, { label: string; tone: 'success' | 'warning' | 'danger' }> = {
@@ -27,6 +34,14 @@ const CONNECTION_BADGES: Record<ConnectionStatus, { label: string; tone: 'succes
   closed: { label: 'Desconectado', tone: 'danger' },
 }
 
+const TABS = [
+  { id: 'overview', label: 'Resumen' },
+  { id: 'orders', label: 'Pedidos' },
+  { id: 'inventory', label: 'Inventario' },
+] as const
+
+type TabId = (typeof TABS)[number]['id']
+
 /** Página principal: conecta los datos en vivo y las acciones del usuario con los componentes de presentación. */
 export function DashboardPage() {
   const { snapshot, status } = useSimulationStream()
@@ -34,9 +49,11 @@ export function DashboardPage() {
   const catalog = useCatalog()
   const customers = useCustomers()
   const options = useReferenceOptions(catalog.data, customers.data)
+  const [activeTab, setActiveTab] = useState<TabId>('overview')
 
   const customerAction = useRemoteAction(createCustomer)
   const orderAction = useRemoteAction(placeOrder)
+  const arrivalAction = useRemoteAction(registerArrival)
   const policyAction = useRemoteAction(changePolicy)
   const generatorAction = useRemoteAction(updateGenerator)
   const resetAction = useRemoteAction(resetStats)
@@ -47,12 +64,14 @@ export function DashboardPage() {
     return created !== null
   }
   const handlePlaceOrder = async (request: PlaceOrderRequest) => (await orderAction.run(request)) !== null
+  const handleRegisterArrival = async (request: RegisterArrivalRequest) => (await arrivalAction.run(request)) !== null
   const handlePolicyChange = (policy: PolicyId) => void policyAction.run(policy)
   const handleIntensityChange = (ordersPerMinute: number) => void generatorAction.run({ ordersPerMinute })
   const handleGeneratorEnabled = (enabled: boolean, seed?: number) => void generatorAction.run({ enabled, seed })
 
   const connection = CONNECTION_BADGES[status]
   const referenceDataError = catalog.error ?? customers.error
+  const arrivalConfirmation = arrivalAction.result && describeArrival(arrivalAction.result.truckIds)
 
   return (
     <DashboardTemplate
@@ -93,6 +112,13 @@ export function DashboardPage() {
                 error={orderAction.error}
                 confirmation={orderAction.result && `Pedido ${orderAction.result.orderId} registrado`}
               />
+              <ReceptionForm
+                productOptions={options.productOptions}
+                onSubmit={handleRegisterArrival}
+                pending={arrivalAction.pending}
+                error={arrivalAction.error}
+                confirmation={arrivalConfirmation}
+              />
               <CustomerForm
                 serviceLevelOptions={options.serviceLevelOptions}
                 onSubmit={handleCreateCustomer}
@@ -106,30 +132,54 @@ export function DashboardPage() {
       }
     >
       {snapshot ? (
-        <>
-          <StatsPanel
-            stats={snapshot.stats}
-            serviceLevelNames={options.serviceLevelNames}
-            onReset={() => void resetAction.run()}
-            resetting={resetAction.pending}
-            error={resetAction.error}
-          />
-          <WaitingListPanel
-            policies={catalog.data?.policies ?? []}
-            currentPolicy={snapshot.scheduling.policy}
-            waiting={snapshot.scheduling.waiting}
-            waitingTotal={snapshot.scheduling.waitingTotal}
-            serviceLevelNames={options.serviceLevelNames}
-            onPolicyChange={handlePolicyChange}
-            policyError={policyAction.error}
-          />
-          <ActiveOrdersPanel
-            orders={snapshot.activeOrders}
-            completedCount={snapshot.completedOrders}
-            serviceLevelNames={options.serviceLevelNames}
-          />
-          <ResourcePanel resources={snapshot.resources} />
-        </>
+        <TabbedContent
+          tabs={TABS}
+          activeId={activeTab}
+          onChange={(id) => setActiveTab(id as TabId)}
+          idPrefix="dashboard"
+        >
+          {activeTab === 'overview' && (
+            <>
+              <StatsPanel
+                stats={snapshot.stats}
+                serviceLevelNames={options.serviceLevelNames}
+                onReset={() => void resetAction.run()}
+                resetting={resetAction.pending}
+                error={resetAction.error}
+              />
+              <ResourcePanel resources={snapshot.resources} />
+            </>
+          )}
+          {activeTab === 'orders' && (
+            <>
+              <WaitingListPanel
+                policies={catalog.data?.policies ?? []}
+                currentPolicy={snapshot.scheduling.policy}
+                waiting={snapshot.scheduling.waiting}
+                waitingTotal={snapshot.scheduling.waitingTotal}
+                serviceLevelNames={options.serviceLevelNames}
+                productNames={options.productNames}
+                onPolicyChange={handlePolicyChange}
+                policyError={policyAction.error}
+              />
+              <ActiveOrdersPanel
+                orders={snapshot.activeOrders}
+                completedCount={snapshot.completedOrders}
+                serviceLevelNames={options.serviceLevelNames}
+              />
+            </>
+          )}
+          {activeTab === 'inventory' && (
+            <>
+              <ReceptionPanel
+                reception={snapshot.reception}
+                inventory={snapshot.inventory}
+                productNames={options.productNames}
+              />
+              <InventoryPanel stock={snapshot.inventory.stock} productNames={options.productNames} />
+            </>
+          )}
+        </TabbedContent>
       ) : (
         <p>Esperando datos del servidor…</p>
       )}

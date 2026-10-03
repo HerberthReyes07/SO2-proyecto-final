@@ -17,6 +17,7 @@ const waiting = (orderId: string, waitedMinutes: number, serviceLevel: WaitingOr
   totalItems: 5,
   waitedMillis: waitedMinutes * MINUTE,
   targetWaitMillis: 10 * MINUTE,
+  missingStock: [],
 })
 
 function setup(overrides: Partial<React.ComponentProps<typeof WaitingListPanel>> = {}) {
@@ -26,6 +27,7 @@ function setup(overrides: Partial<React.ComponentProps<typeof WaitingListPanel>>
     waiting: [waiting('ORD-0001', 2), waiting('ORD-0002', 12)],
     waitingTotal: 2,
     serviceLevelNames: { PRIORITY: 'Prioritario', ECONOMY: 'Económico' },
+    productNames: { 'P-001': 'Camiseta' },
     onPolicyChange: vi.fn(),
     ...overrides,
   }
@@ -67,6 +69,19 @@ describe('WaitingListPanel', () => {
     setup({ waitingTotal: 130 })
 
     expect(screen.getByText('… y 128 pedidos más en espera')).toBeInTheDocument()
+  })
+
+  it('explains which products an order is waiting for', () => {
+    setup({ waiting: [{ ...waiting('ORD-0001', 2), missingStock: [{ productId: 'P-001', missingUnits: 5 }] }], waitingTotal: 1 })
+
+    expect(screen.getByText('Sin stock')).toBeInTheDocument()
+    expect(screen.getByText('Camiseta (faltan 5)')).toBeInTheDocument()
+  })
+
+  it('does not mention stock for an order that has everything it needs', () => {
+    setup()
+
+    expect(screen.queryByText('Sin stock')).not.toBeInTheDocument()
   })
 
   it('reports a policy change', () => {

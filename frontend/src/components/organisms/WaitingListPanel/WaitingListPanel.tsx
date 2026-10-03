@@ -4,6 +4,7 @@ import { WaitingOrderItem } from '@/components/molecules/WaitingOrderItem'
 import type { PolicyId, PolicyInfo } from '@/types/catalog'
 import type { WaitingOrder } from '@/types/simulation'
 import { describeCriterion, isOverdue } from '@/utils/policyCriterion'
+import { describeMissingStock } from '@/utils/stockStatus'
 import styles from './WaitingListPanel.module.css'
 
 export interface WaitingListPanelProps {
@@ -15,6 +16,8 @@ export interface WaitingListPanelProps {
   waitingTotal: number
   /** Diccionario id de nivel de servicio → nombre mostrado. */
   serviceLevelNames: Record<string, string>
+  /** Diccionario id de producto → nombre mostrado, para explicar qué stock falta. */
+  productNames: Record<string, string>
   onPolicyChange: (policy: PolicyId) => void
   policyError?: string | null
 }
@@ -26,6 +29,7 @@ export function WaitingListPanel({
   waiting,
   waitingTotal,
   serviceLevelNames,
+  productNames,
   onPolicyChange,
   policyError,
 }: WaitingListPanelProps) {
@@ -60,6 +64,9 @@ export function WaitingListPanel({
                   totalItems={order.totalItems}
                   criterion={describeCriterion(currentPolicy, order, levelLabel)}
                   overdue={isOverdue(order)}
+                  stockWarning={
+                    order.missingStock.length > 0 ? describeMissingStock(order.missingStock, productNames) : undefined
+                  }
                 />
               )
             })}

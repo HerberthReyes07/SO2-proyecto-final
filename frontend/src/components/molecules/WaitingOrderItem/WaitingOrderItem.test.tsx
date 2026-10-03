@@ -41,6 +41,13 @@ describe('WaitingOrderItem', () => {
     expect(screen.getByText('Retrasado')).toBeInTheDocument()
   })
 
+  it('explains what stock is missing when the order cannot start for lack of it', () => {
+    renderItem({ stockWarning: 'Camiseta (faltan 5)' } as Partial<typeof BASE>)
+
+    expect(screen.getByText('Sin stock')).toBeInTheDocument()
+    expect(screen.getByText('Camiseta (faltan 5)')).toBeInTheDocument()
+  })
+
   it('does not flag an order that is still on time', () => {
     renderItem()
 

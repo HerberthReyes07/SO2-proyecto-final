@@ -5,7 +5,9 @@ import static com.redxela.domain.ServiceLevel.EXPRESS;
 import static com.redxela.testsupport.TestOrders.STANDARD_PRODUCT;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.redxela.catalog.ProductCatalog;
 import com.redxela.domain.ServiceLevel;
+import com.redxela.inventory.Inventory;
 import com.redxela.resources.ResourceRegistry;
 import com.redxela.scheduling.SchedulingPolicy;
 import com.redxela.sim.SimClock;
@@ -19,6 +21,8 @@ import org.junit.jupiter.api.Test;
 class OrderSchedulerTest {
 
     private final SimClock clock = new SimClock();
+    // Existencias de sobra: estos tests no se ocupan del stock.
+    private final Inventory inventory = new Inventory(ProductCatalog.defaultCatalog(), 1_000);
     private final ResourceRegistry resources = new ResourceRegistry();
     private OrderProcessor processor;
     private OrderScheduler scheduler;
@@ -28,7 +32,7 @@ class OrderSchedulerTest {
         clock.pause(); // el tiempo simulado queda fijo y los cálculos de espera son exactos
         OrderWorkflow workflow = new OrderWorkflow(resources, clock);
         processor = new OrderProcessor(workflow, ProcessingTimes.defaults());
-        scheduler = new OrderScheduler(clock, resources, workflow, processor);
+        scheduler = new OrderScheduler(clock, resources, workflow, processor, inventory);
     }
 
     @AfterEach
