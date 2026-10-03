@@ -23,3 +23,15 @@ java -jar target/redxela.jar                  # http://localhost:7070
 cd backend && mvn test
 cd frontend && npm test
 ```
+
+## Solución de problemas
+
+**`Unresolved compilation problem` / `X cannot be resolved` al correr los tests del backend.** La extensión de
+Java de VS Code (`redhat.java`) y Maven comparten la carpeta `backend/target/`. Si el editor deja clases
+compiladas a medias, Maven las da por buenas y los tests fallan aunque el código esté bien. Se arregla
+borrando lo compilado y volviendo a correr:
+
+```bash
+rm -rf backend/target/classes backend/target/test-classes
+cd backend && mvn test
+```

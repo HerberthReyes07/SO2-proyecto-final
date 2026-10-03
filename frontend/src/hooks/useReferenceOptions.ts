@@ -5,7 +5,9 @@ import {
   buildCustomerOptions,
   buildProductOptions,
   buildServiceLevelOptions,
+  merchandiseTypeNames,
   productNames,
+  productTypeIds,
   serviceLevelNames,
 } from '@/utils/options'
 
@@ -16,6 +18,10 @@ interface ReferenceOptions {
   productOptions: Option[]
   /** Diccionario id de producto → nombre mostrado. */
   productNames: Record<string, string>
+  /** Diccionario id de producto → id de su tipo de mercancía. */
+  productTypeIds: Record<string, string>
+  /** Diccionario id de tipo de mercancía → nombre mostrado. */
+  merchandiseTypeNames: Record<string, string>
   customerOptions: Option[]
 }
 
@@ -31,6 +37,8 @@ export function useReferenceOptions(catalog: CatalogResponse | null, customers: 
       serviceLevelNames: serviceLevelNames(levels ?? []),
       productOptions: catalog ? buildProductOptions(catalog) : [],
       productNames: catalog ? productNames(catalog) : {},
+      productTypeIds: catalog ? productTypeIds(catalog) : {},
+      merchandiseTypeNames: catalog ? merchandiseTypeNames(catalog) : {},
       customerOptions: buildCustomerOptions(customers ?? [], levels ?? []),
     }),
     [catalog, customers, levels],

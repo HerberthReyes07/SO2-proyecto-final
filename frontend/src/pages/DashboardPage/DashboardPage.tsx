@@ -11,6 +11,7 @@ import { ReceptionPanel } from '@/components/organisms/ReceptionPanel'
 import { ResourcePanel } from '@/components/organisms/ResourcePanel'
 import { StatsPanel } from '@/components/organisms/StatsPanel'
 import { TabbedContent } from '@/components/organisms/TabbedContent'
+import { WarehousePanel } from '@/components/organisms/WarehousePanel'
 import { WaitingListPanel } from '@/components/organisms/WaitingListPanel'
 import { DashboardTemplate } from '@/components/templates/DashboardTemplate'
 import { useClockControls } from '@/hooks/useClockControls'
@@ -24,8 +25,15 @@ import { placeOrder } from '@/services/orderApi'
 import { registerArrival } from '@/services/receptionApi'
 import { changePolicy } from '@/services/schedulingApi'
 import { resetStats } from '@/services/statsApi'
+import { changeStrategy } from '@/services/warehouseApi'
 import { describeArrival } from '@/utils/describeArrival'
-import type { CreateCustomerRequest, PlaceOrderRequest, PolicyId, RegisterArrivalRequest } from '@/types/catalog'
+import type {
+  CreateCustomerRequest,
+  PlaceOrderRequest,
+  PlacementStrategyId,
+  PolicyId,
+  RegisterArrivalRequest,
+} from '@/types/catalog'
 import type { ConnectionStatus } from '@/types/simulation'
 
 const CONNECTION_BADGES: Record<ConnectionStatus, { label: string; tone: 'success' | 'warning' | 'danger' }> = {
@@ -38,6 +46,7 @@ const TABS = [
   { id: 'overview', label: 'Resumen' },
   { id: 'orders', label: 'Pedidos' },
   { id: 'inventory', label: 'Inventario' },
+  { id: 'warehouse', label: 'Almacén' },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -57,6 +66,7 @@ export function DashboardPage() {
   const policyAction = useRemoteAction(changePolicy)
   const generatorAction = useRemoteAction(updateGenerator)
   const resetAction = useRemoteAction(resetStats)
+  const strategyAction = useRemoteAction(changeStrategy)
 
   const handleCreateCustomer = async (request: CreateCustomerRequest) => {
     const created = await customerAction.run(request)
@@ -66,6 +76,7 @@ export function DashboardPage() {
   const handlePlaceOrder = async (request: PlaceOrderRequest) => (await orderAction.run(request)) !== null
   const handleRegisterArrival = async (request: RegisterArrivalRequest) => (await arrivalAction.run(request)) !== null
   const handlePolicyChange = (policy: PolicyId) => void policyAction.run(policy)
+  const handleStrategyChange = (strategy: PlacementStrategyId) => void strategyAction.run(strategy)
   const handleIntensityChange = (ordersPerMinute: number) => void generatorAction.run({ ordersPerMinute })
   const handleGeneratorEnabled = (enabled: boolean, seed?: number) => void generatorAction.run({ enabled, seed })
 
@@ -178,6 +189,17 @@ export function DashboardPage() {
               />
               <InventoryPanel stock={snapshot.inventory.stock} productNames={options.productNames} />
             </>
+          )}
+          {activeTab === 'warehouse' && (
+            <WarehousePanel
+              warehouse={snapshot.warehouse}
+              strategies={catalog.data?.placementStrategies ?? []}
+              productNames={options.productNames}
+              productTypeIds={options.productTypeIds}
+              merchandiseTypeNames={options.merchandiseTypeNames}
+              onStrategyChange={handleStrategyChange}
+              strategyError={strategyAction.error}
+            />
           )}
         </TabbedContent>
       ) : (

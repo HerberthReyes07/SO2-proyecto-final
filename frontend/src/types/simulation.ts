@@ -1,4 +1,4 @@
-import type { PolicyId, ServiceLevelId } from '@/types/catalog'
+import type { PlacementStrategyId, PolicyId, ServiceLevelId } from '@/types/catalog'
 
 /** Tipos que reflejan el contrato JSON del backend (record `SimulationSnapshot` y relacionados). */
 
@@ -178,6 +178,49 @@ export interface ReceptionState {
   trucks: Truck[]
 }
 
+/** Geometría del almacén: pasillos × posiciones × niveles, todas las ubicaciones del mismo tamaño. */
+export interface WarehouseLayout {
+  aisles: number
+  positions: number
+  levels: number
+  /** Capacidad de cada ubicación, en unidades de volumen. */
+  locationCapacity: number
+}
+
+/** Lo que hay en una ubicación ocupada; una ubicación pertenece a un solo lote. */
+export interface LocationContent {
+  lotId: string
+  productId: string
+  units: number
+  /** Volumen que ocupan las unidades; lo que falta hasta la capacidad es fragmentación interna. */
+  usedVolume: number
+}
+
+/** Un lote y dónde está guardado. */
+export interface Lot {
+  lotId: string
+  productId: string
+  units: number
+  /** Índices de las ubicaciones que ocupa, de menor a mayor. */
+  locations: number[]
+  /** Tramos contiguos en que está repartido (1 = todo junto). */
+  runs: number
+}
+
+export interface WarehouseState {
+  layout: WarehouseLayout
+  strategy: PlacementStrategyId
+  usedLocations: number
+  totalLocations: number
+  /** Volumen perdido por fragmentación interna. */
+  wastedVolume: number
+  /** Unidades rechazadas desde el inicio por no haber ubicaciones libres. */
+  rejectedUnits: number
+  /** Contenido de cada ubicación según su índice; null si está libre. */
+  locations: (LocationContent | null)[]
+  lots: Lot[]
+}
+
 /** Estado completo del centro de distribución. */
 export interface SimulationSnapshot {
   clock: ClockSnapshot
@@ -186,6 +229,7 @@ export interface SimulationSnapshot {
   stats: StatsSnapshot
   inventory: InventoryState
   reception: ReceptionState
+  warehouse: WarehouseState
   resources: PoolSnapshot[]
   activeOrders: OrderProgress[]
   completedOrders: number

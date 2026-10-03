@@ -35,6 +35,15 @@ export interface ServiceLevelInfo {
   targetWaitMinutes: number
 }
 
+export type PlacementStrategyId = 'FIRST_FREE' | 'LEAST_USED_AISLE'
+
+/** Estrategia para elegir ubicaciones en el almacén, con la explicación de su criterio. */
+export interface StrategyInfo {
+  id: PlacementStrategyId
+  displayName: string
+  description: string
+}
+
 /** Política de atención con la explicación de su criterio de orden. */
 export interface PolicyInfo {
   id: PolicyId
@@ -47,6 +56,7 @@ export interface CatalogResponse {
   merchandiseTypes: MerchandiseTypeInfo[]
   serviceLevels: ServiceLevelInfo[]
   policies: PolicyInfo[]
+  placementStrategies: StrategyInfo[]
 }
 
 export interface Customer {

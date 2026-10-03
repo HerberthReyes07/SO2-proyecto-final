@@ -204,12 +204,42 @@ Productor/consumidor acotado (capacidad 10) implementado a mano con un `Reentran
 
 ## 6. Almacenamiento
 
-Asignación **no contigua**, análoga a la paginación.
+Asignación **no contigua**, análoga a la paginación de memoria:
 
-- 4 pasillos × 6 posiciones × 5 niveles = 120 ubicaciones de 100 unidades de volumen.
-- Bitmap de ubicaciones libres; cada lote guarda su lista de ubicaciones (asignación indexada).
-- Fragmentación interna solo en la última ubicación de cada lote.
-- Invariante a probar: una ubicación nunca pertenece a dos lotes.
+| Memoria | Almacén |
+|---|---|
+| Marco de página | Ubicación (todas del mismo tamaño) |
+| Proceso | Lote de mercadería |
+| Tabla de páginas | Lista de ubicaciones del lote (en cualquier pasillo y nivel) |
+| Bitmap de marcos libres | `BitSet` de ubicaciones ocupadas |
+| Fragmentación interna | La última ubicación de un lote queda a medias |
+| Fragmentación externa | **No existe**: cualquier ubicación libre sirve, esté donde esté |
+
+- **Dimensiones:** 6 pasillos × 8 posiciones × 5 niveles = **240 ubicaciones de 1.000 unidades de volumen**. Se numeran
+  por pasillo, luego por posición y, lo que más rápido cambia, por nivel; dos ubicaciones son *contiguas* si sus
+  índices son consecutivos. Se eligió ese tamaño porque 300 unidades de cada producto ocupan 112 ubicaciones (47 %),
+  lo que deja espacio para recibir mercadería y para que se fragmente. (Con las 100 unidades de volumen que se
+  pensaron al principio, las refrigeradoras solas habrían ocupado más que todo el almacén.)
+- **Una ubicación guarda unidades enteras de un solo producto y pertenece a un solo lote.** Caben
+  `capacidad / volumen de la unidad` unidades, redondeado hacia abajo: un colchón (80) en una ubicación de 1.000 deja
+  40 de sobra, otra fuente de fragmentación interna. Una camiseta (2) cabe 500 por ubicación.
+- **Estrategias de ubicación** (`PlacementStrategy`, intercambiables en caliente; afectan solo a los lotes nuevos):
+  *Primera libre* (menor índice: llena pasillo por pasillo) y *Pasillo menos ocupado* (reparte entre pasillos).
+- **Orden de salida FIFO por lote:** al despachar se consumen primero los lotes más antiguos. Las ubicaciones que se
+  vacían se liberan y los lotes nuevos las reutilizan, así con el uso un lote nuevo queda repartido en los huecos que
+  dejaron los viejos (verificado: 800 jarrones quedaron en las ubicaciones 0, 2-4, 7-9 y 112: 4 tramos).
+- **Almacén lleno → recepción parcial.** Se almacena lo que cabe y el resto se **rechaza**, queda contado y visible
+  ("unidades rechazadas"). Esperar espacio sería un bloqueo indefinido: el espacio solo se libera cuando los pedidos
+  consumen stock, y puede que ese stock no exista (p. ej. el almacén lleno de un producto y llega otro).
+- **Orden de las operaciones:** al recibir se almacena primero y se suma al inventario solo lo almacenado; al despachar
+  se descuenta del inventario primero y luego del almacén. Así las existencias contables nunca superan lo que hay
+  físicamente. Invariante verificada: `disponible + reservado = unidades físicas` de cada producto.
+- **Sincronización:** `ReentrantReadWriteLock` (los snapshots comparten el lock de lectura; almacenar y retirar, que son
+  raros, toman el de escritura).
+- **Interfaz:** mapa por pasillo (una columna por posición y una fila por nivel, el más alto arriba; cada ubicación se
+  llena de abajo hacia arriba según su volumen y se colorea por tipo de mercancía), tabla de lotes con su dispersión, y
+  al apuntar un lote se resaltan sus ubicaciones en el mapa. Métricas: ocupación, espacio perdido por fragmentación
+  interna, lotes dispersos y unidades rechazadas.
 
 ## 7. Deadlock
 

@@ -4,7 +4,9 @@ import {
   buildProductOptions,
   buildServiceLevelOptions,
   describeTargetWait,
+  merchandiseTypeNames,
   productNames,
+  productTypeIds,
 } from './options'
 
 const express: ServiceLevelInfo = { id: 'EXPRESS', level: 1, displayName: 'Exprés', targetWaitMinutes: 1 }
@@ -34,6 +36,7 @@ describe('buildProductOptions', () => {
     merchandiseTypes: [{ id: 'HEAVY', displayName: 'Pesado', description: '', recipe: [] }],
     serviceLevels: [],
     policies: [],
+    placementStrategies: [],
   }
 
   it('appends the merchandise type name to each product', () => {
@@ -60,8 +63,27 @@ describe('productNames', () => {
       merchandiseTypes: [],
       serviceLevels: [],
       policies: [],
+      placementStrategies: [],
     }
 
     expect(productNames(catalog)).toEqual({ 'P-007': 'Refrigeradora' })
+  })
+})
+
+describe('productTypeIds and merchandiseTypeNames', () => {
+  const catalog: CatalogResponse = {
+    products: [{ id: 'P-007', name: 'Refrigeradora', type: 'HEAVY', unitVolume: 60 }],
+    merchandiseTypes: [{ id: 'HEAVY', displayName: 'Pesado', description: '', recipe: [] }],
+    serviceLevels: [],
+    policies: [],
+    placementStrategies: [],
+  }
+
+  it('maps each product to its type id', () => {
+    expect(productTypeIds(catalog)).toEqual({ 'P-007': 'HEAVY' })
+  })
+
+  it('maps each type id to its display name', () => {
+    expect(merchandiseTypeNames(catalog)).toEqual({ HEAVY: 'Pesado' })
   })
 })

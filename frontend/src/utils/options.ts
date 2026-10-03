@@ -45,3 +45,13 @@ export function serviceLevelNames(levels: readonly ServiceLevelInfo[]): Record<s
 export function productNames(catalog: CatalogResponse): Record<string, string> {
   return Object.fromEntries(catalog.products.map((product) => [product.id, product.name]))
 }
+
+/** Diccionario id de producto → id de su tipo de mercancía. */
+export function productTypeIds(catalog: CatalogResponse): Record<string, string> {
+  return Object.fromEntries(catalog.products.map((product) => [product.id, product.type]))
+}
+
+/** Diccionario id de tipo de mercancía → nombre mostrado. */
+export function merchandiseTypeNames(catalog: CatalogResponse): Record<string, string> {
+  return Object.fromEntries(catalog.merchandiseTypes.map((type) => [type.id, type.displayName]))
+}

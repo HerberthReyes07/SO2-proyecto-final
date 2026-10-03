@@ -1,0 +1,27 @@
+.cell {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 3px;
+}
+
+.free {
+  border: 1px dashed var(--color-border);
+  background: transparent;
+}
+
+/* La parte de abajo, hasta --fill, se pinta con el color del tipo; el resto queda como fondo suave. */
+.occupied {
+  border: 1px solid var(--color-border);
+  background: linear-gradient(
+    to top,
+    var(--cell-color) 0,
+    var(--cell-color) var(--fill),
+    var(--color-neutral-soft) var(--fill),
+    var(--color-neutral-soft) 100%
+  );
+}
+
+.highlighted {
+  outline: 2px solid var(--color-text);
+  outline-offset: 1px;
+}

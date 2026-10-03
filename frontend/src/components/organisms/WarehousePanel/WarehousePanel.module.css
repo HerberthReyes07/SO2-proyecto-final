@@ -1,0 +1,29 @@
+.title {
+  margin-bottom: var(--space-3);
+  font-size: 1.125rem;
+}
+
+.subtitle {
+  margin: var(--space-6) 0 var(--space-2);
+  font-size: 0.9375rem;
+}
+
+.cards {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  margin-bottom: var(--space-4);
+}
+
+.note {
+  margin: 0 0 var(--space-3);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.aisles {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  margin-top: var(--space-3);
+}

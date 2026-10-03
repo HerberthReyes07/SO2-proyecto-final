@@ -16,6 +16,13 @@
   --color-neutral-soft: #e9edf2;
   --color-accent: #2457d6;
 
+  /* Un color por tipo de mercancía (mapa del almacén). */
+  --color-type-standard: #5b8def;
+  --color-type-fragile: #d9628b;
+  --color-type-heavy: #8a6d3b;
+  --color-type-perishable: #2fa36b;
+  --color-type-bulky: #8b5cf6;
+
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -44,5 +51,10 @@
     --color-neutral: #98a3b3;
     --color-neutral-soft: #262e3a;
     --color-accent: #6b93ff;
+    --color-type-standard: #7aa5ff;
+    --color-type-fragile: #f08cae;
+    --color-type-heavy: #c9a25d;
+    --color-type-perishable: #4cc388;
+    --color-type-bulky: #a98bff;
   }
 }
