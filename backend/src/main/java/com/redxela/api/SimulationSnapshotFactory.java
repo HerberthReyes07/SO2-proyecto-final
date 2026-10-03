@@ -12,6 +12,7 @@ import com.redxela.resources.ResourceRegistry;
 import com.redxela.sim.ClockSnapshot;
 import com.redxela.sim.SimClock;
 import com.redxela.stats.SimulationStatistics;
+import com.redxela.warehouse.Warehouse;
 import java.time.Duration;
 
 /** Arma el {@link SimulationSnapshot} leyendo cada componente del núcleo. */
@@ -27,12 +28,13 @@ public final class SimulationSnapshotFactory {
     private final ReceptionBuffer receptionBuffer;
     private final InventoryWorker inventoryWorker;
     private final ReceptionService reception;
+    private final Warehouse warehouse;
 
     public SimulationSnapshotFactory(SimClock clock, ResourceRegistry resources, OrderScheduler scheduler,
                                      OrderProcessor processor, OrderGenerator generator,
                                      SimulationStatistics statistics, Inventory inventory,
                                      ReceptionBuffer receptionBuffer, InventoryWorker inventoryWorker,
-                                     ReceptionService reception) {
+                                     ReceptionService reception, Warehouse warehouse) {
         this.clock = clock;
         this.resources = resources;
         this.scheduler = scheduler;
@@ -43,6 +45,7 @@ public final class SimulationSnapshotFactory {
         this.receptionBuffer = receptionBuffer;
         this.inventoryWorker = inventoryWorker;
         this.reception = reception;
+        this.warehouse = warehouse;
     }
 
     public SimulationSnapshot create() {
@@ -57,6 +60,7 @@ public final class SimulationSnapshotFactory {
                 statistics.snapshot(now),
                 new InventorySnapshot(inventory.snapshot(), receptionBuffer.snapshot(), inventoryWorker.snapshot()),
                 reception.snapshot(now),
+                warehouse.snapshot(),
                 resources.snapshots(),
                 processor.activeOrders(now),
                 processor.completedCount());

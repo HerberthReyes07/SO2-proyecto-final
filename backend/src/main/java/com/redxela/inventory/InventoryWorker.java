@@ -1,17 +1,26 @@
 package com.redxela.inventory;
 
 import com.redxela.sim.SimClock;
+import com.redxela.warehouse.StoreResult;
+import com.redxela.warehouse.Warehouse;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Hilo de Inventario: retira los mensajes de Recepción a su propio ritmo, actualiza las existencias
- * y avisa que cambió el stock de ese producto para que se reevalúen los pedidos que lo esperaban.
+ * Hilo de Inventario: retira los mensajes de Recepción a su propio ritmo, asigna las ubicaciones
+ * del almacén, actualiza las existencias y avisa que cambió el stock de ese producto para que se
+ * reevalúen los pedidos que lo esperaban.
  *
- * <p>Es el único que modifica las existencias por recepciones, y lo hace por medio de la API de
- * {@link Inventory}: Recepción nunca toca el inventario directamente.
+ * <p>Es el único que modifica las existencias por recepciones, y lo hace por medio de las API de
+ * {@link Inventory} y {@link Warehouse}: Recepción nunca las toca directamente.
+ *
+ * <h3>Orden: primero el almacén, después el inventario</h3>
+ * Lo que no cabe en el almacén se rechaza y <b>no</b> se suma al inventario; por eso se almacena
+ * primero y se suma solo lo almacenado. Así las existencias nunca superan lo que hay físicamente.
+ * (Esperar a que se libere espacio sería un bloqueo indefinido: el espacio solo se libera cuando
+ * los pedidos consumen stock, y puede que ese stock no exista.)
  */
 public final class InventoryWorker implements AutoCloseable {
 
@@ -20,6 +29,7 @@ public final class InventoryWorker implements AutoCloseable {
 
     private final ReceptionBuffer buffer;
     private final Inventory inventory;
+    private final Warehouse warehouse;
     private final SimClock clock;
     private final InventoryTimes times;
     private final Consumer<String> onStockChanged;
@@ -30,10 +40,11 @@ public final class InventoryWorker implements AutoCloseable {
     /**
      * @param onStockChanged se invoca con el id del producto después de sumar sus unidades al inventario
      */
-    public InventoryWorker(ReceptionBuffer buffer, Inventory inventory, SimClock clock, InventoryTimes times,
-                           Consumer<String> onStockChanged) {
+    public InventoryWorker(ReceptionBuffer buffer, Inventory inventory, Warehouse warehouse, SimClock clock,
+                           InventoryTimes times, Consumer<String> onStockChanged) {
         this.buffer = buffer;
         this.inventory = inventory;
+        this.warehouse = warehouse;
         this.clock = clock;
         this.times = times;
         this.onStockChanged = onStockChanged;
@@ -65,14 +76,25 @@ public final class InventoryWorker implements AutoCloseable {
         processing = message;
         try {
             clock.sleep(times.processingTime(message.quantity()));
-            inventory.receive(message.productId(), message.quantity());
+            store(message);
             processed.incrementAndGet();
-            onStockChanged.accept(message.productId());
         } catch (IllegalArgumentException e) {
             // Un mensaje inválido (producto desconocido) se descarta con aviso, no detiene a Inventario.
             LOG.error("Discarding invalid reception message {}: {}", message, e.getMessage());
         } finally {
             processing = null;
+        }
+    }
+
+    private void store(ReceptionMessage message) {
+        StoreResult result = warehouse.store("LOT-" + message.truckId(), message.productId(), message.quantity());
+        if (result.rejected() > 0) {
+            LOG.warn("Warehouse is full: {} of {} units of {} from {} were rejected",
+                    result.rejected(), result.requested(), message.productId(), message.truckId());
+        }
+        if (result.stored() > 0) {
+            inventory.receive(message.productId(), result.stored());
+            onStockChanged.accept(message.productId());
         }
     }
 

@@ -106,16 +106,21 @@ public final class Inventory {
     /**
      * El pedido se despachó: las unidades reservadas salen del inventario.
      *
+     * @return las unidades que salieron, por producto, para que quien lleva el almacén físico las retire también
      * @throws IllegalStateException si el pedido no tenía reserva
      */
-    public void consume(String orderId) {
-        withLock(lock.writeLock(), () -> {
+    public Map<String, Integer> consume(String orderId) {
+        lock.writeLock().lock();
+        try {
             Map<String, Integer> units = reservations.remove(orderId);
             if (units == null) {
                 throw new IllegalStateException("Order " + orderId + " has no reservation to consume");
             }
             units.forEach((productId, quantity) -> stockOf(productId).reserved -= quantity);
-        });
+            return Map.copyOf(units);
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     /** El pedido se abortó: las unidades reservadas vuelven a estar disponibles. No hace nada si no tenía reserva. */

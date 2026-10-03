@@ -5,6 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.redxela.catalog.ProductCatalog;
 import com.redxela.sim.SimClock;
 import com.redxela.testsupport.Await;
+import com.redxela.warehouse.PlacementStrategy;
+import com.redxela.warehouse.Warehouse;
+import com.redxela.warehouse.WarehouseLayout;
+import com.redxela.warehouse.WarehouseSnapshot;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -27,6 +31,8 @@ class InventoryWorkerTest {
 
     private final SimClock clock = new SimClock();
     private final Inventory inventory = new Inventory(ProductCatalog.defaultCatalog(), 0);
+    private final ProductCatalog catalog = ProductCatalog.defaultCatalog();
+    private final Warehouse warehouse = new Warehouse(WarehouseLayout.defaults(), catalog, PlacementStrategy.FIRST_FREE);
     private final ReceptionBuffer buffer = new ReceptionBuffer(BUFFER_CAPACITY);
     private final List<String> notified = Collections.synchronizedList(new ArrayList<>());
     private final List<Integer> availableWhenNotified = Collections.synchronizedList(new ArrayList<>());
@@ -36,11 +42,15 @@ class InventoryWorkerTest {
     @BeforeEach
     void setUp() {
         clock.setSpeed(SimClock.MAX_SPEED);
-        worker = new InventoryWorker(buffer, inventory, clock, InventoryTimes.defaults(), productId -> {
+        worker = newWorker(warehouse);
+        worker.start();
+    }
+
+    private InventoryWorker newWorker(Warehouse target) {
+        return new InventoryWorker(buffer, inventory, target, clock, InventoryTimes.defaults(), productId -> {
             notified.add(productId);
             availableWhenNotified.add(availableOf(productId));
         });
-        worker.start();
     }
 
     @AfterEach
@@ -65,6 +75,50 @@ class InventoryWorkerTest {
         // Cuando se avisa, el stock ya está actualizado: quien reevalúa los pedidos verá las unidades nuevas.
         assertThat(availableWhenNotified).containsExactly(50);
         assertThat(worker.snapshot().processed()).isEqualTo(1);
+    }
+
+    @Test
+    void stores_each_delivery_as_a_lot_in_the_warehouse() throws Exception {
+        buffer.put(new ReceptionMessage("TRK-7", "P-001", 50));
+
+        Await.until("stock updated", () -> availableOf("P-001") == 50);
+
+        WarehouseSnapshot snapshot = warehouse.snapshot();
+        assertThat(snapshot.lots()).hasSize(1);
+        assertThat(snapshot.lots().get(0).lotId()).isEqualTo("LOT-TRK-7");
+        assertThat(snapshot.lots().get(0).units()).isEqualTo(50);
+        assertThat(snapshot.usedLocations()).isEqualTo(1);
+    }
+
+    @Test
+    void stores_only_what_fits_and_adds_only_that_to_the_inventory_when_the_warehouse_is_nearly_full() throws Exception {
+        worker.close();
+        Warehouse tiny = new Warehouse(new WarehouseLayout(1, 1, 2, 1_000), catalog, PlacementStrategy.FIRST_FREE);
+        worker = newWorker(tiny);
+        worker.start();
+
+        buffer.put(new ReceptionMessage("TRK-1", "P-001", 1_500)); // camisetas: caben 500 por ubicación, 2 ubicaciones
+
+        Await.until("partial stock", () -> availableOf("P-001") == 1_000);
+        assertThat(tiny.snapshot().rejectedUnits()).isEqualTo(500);
+        assertThat(notified).containsExactly("P-001");
+        Await.until("message counted as processed", () -> worker.snapshot().processed() == 1);
+    }
+
+    @Test
+    void a_delivery_that_does_not_fit_at_all_changes_nothing_and_announces_nothing() throws Exception {
+        worker.close();
+        Warehouse full = new Warehouse(new WarehouseLayout(1, 1, 1, 1_000), catalog, PlacementStrategy.FIRST_FREE);
+        full.store("LOT-X", "P-004", 10); // ocupa la única ubicación
+        worker = newWorker(full);
+        worker.start();
+
+        buffer.put(new ReceptionMessage("TRK-1", "P-001", 100));
+
+        Await.until("message processed", () -> worker.snapshot().processed() == 1);
+        assertThat(availableOf("P-001")).isZero();
+        assertThat(notified).isEmpty();
+        assertThat(full.snapshot().rejectedUnits()).isEqualTo(100);
     }
 
     @Test

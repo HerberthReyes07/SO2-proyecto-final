@@ -8,6 +8,7 @@ import com.redxela.reception.ReceptionSnapshot;
 import com.redxela.resources.PoolSnapshot;
 import com.redxela.sim.ClockSnapshot;
 import com.redxela.stats.StatsSnapshot;
+import com.redxela.warehouse.WarehouseSnapshot;
 import java.util.List;
 
 /**
@@ -21,6 +22,7 @@ import java.util.List;
  * @param stats           estadísticas de los pedidos despachados
  * @param inventory       existencias, buffer de recepción y estado del procesamiento de Inventario
  * @param reception       camiones en Recepción
+ * @param warehouse       ubicaciones del almacén y lotes
  * @param resources       estado de cada pool de recursos
  * @param activeOrders    pedidos en proceso, en orden de llegada
  * @param completedOrders cantidad de pedidos ya despachados
@@ -32,6 +34,7 @@ public record SimulationSnapshot(
         StatsSnapshot stats,
         InventorySnapshot inventory,
         ReceptionSnapshot reception,
+        WarehouseSnapshot warehouse,
         List<PoolSnapshot> resources,
         List<OrderProgressSnapshot> activeOrders,
         long completedOrders) {

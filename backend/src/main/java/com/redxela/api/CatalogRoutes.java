@@ -4,10 +4,11 @@ import com.redxela.catalog.ProductCatalog;
 import com.redxela.domain.MerchandiseType;
 import com.redxela.domain.ServiceLevel;
 import com.redxela.scheduling.SchedulingPolicy;
+import com.redxela.warehouse.PlacementStrategy;
 import io.javalin.Javalin;
 import java.util.Arrays;
 
-/** Datos de referencia de solo lectura: productos, tipos de mercancía, niveles de servicio y políticas. */
+/** Datos de referencia de solo lectura: productos, tipos de mercancía, niveles de servicio, políticas y estrategias de ubicación. */
 public final class CatalogRoutes implements ApiRoutes {
 
     private final CatalogResponse response;
@@ -18,7 +19,8 @@ public final class CatalogRoutes implements ApiRoutes {
                 catalog.all(),
                 Arrays.stream(MerchandiseType.values()).map(MerchandiseTypeInfo::from).toList(),
                 Arrays.stream(ServiceLevel.values()).map(ServiceLevelInfo::from).toList(),
-                Arrays.stream(SchedulingPolicy.values()).map(PolicyInfo::from).toList());
+                Arrays.stream(SchedulingPolicy.values()).map(PolicyInfo::from).toList(),
+                Arrays.stream(PlacementStrategy.values()).map(StrategyInfo::from).toList());
     }
 
     @Override

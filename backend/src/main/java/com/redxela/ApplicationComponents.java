@@ -12,6 +12,7 @@ import com.redxela.api.SchedulingRoutes;
 import com.redxela.api.SimulationSnapshotFactory;
 import com.redxela.api.SnapshotBroadcaster;
 import com.redxela.api.StatsRoutes;
+import com.redxela.api.WarehouseRoutes;
 import com.redxela.catalog.ProductCatalog;
 import com.redxela.customers.CustomerRegistry;
 import com.redxela.generator.OrderGenerator;
@@ -31,6 +32,10 @@ import com.redxela.reception.ReceptionService;
 import com.redxela.resources.ResourceRegistry;
 import com.redxela.sim.SimClock;
 import com.redxela.stats.SimulationStatistics;
+import com.redxela.warehouse.PlacementStrategy;
+import com.redxela.warehouse.StoreResult;
+import com.redxela.warehouse.Warehouse;
+import com.redxela.warehouse.WarehouseLayout;
 import java.time.Duration;
 import java.util.List;
 
@@ -46,6 +51,7 @@ public final class ApplicationComponents implements AutoCloseable {
     /**
      * Existencias iniciales de cada producto. Con la carga por defecto alcanzan para unas horas
      * simuladas; después los pedidos esperan stock hasta que se registre una llegada de mercadería.
+     * Con el almacén por defecto ocupan 112 de las 240 ubicaciones.
      */
     private static final int INITIAL_UNITS_PER_PRODUCT = 300;
     /** Mensajes que caben entre Recepción e Inventario antes de que Recepción deba esperar. */
@@ -66,6 +72,8 @@ public final class ApplicationComponents implements AutoCloseable {
         ProductCatalog catalog = ProductCatalog.defaultCatalog();
         CustomerRegistry customers = CustomerRegistry.withSampleCustomers();
         Inventory inventory = new Inventory(catalog, INITIAL_UNITS_PER_PRODUCT);
+        Warehouse warehouse = new Warehouse(WarehouseLayout.defaults(), catalog, PlacementStrategy.FIRST_FREE);
+        storeInitialStock(warehouse, catalog);
 
         OrderWorkflow workflow = new OrderWorkflow(resources, clock);
         this.orderProcessor = new OrderProcessor(workflow, ProcessingTimes.defaults());
@@ -74,7 +82,7 @@ public final class ApplicationComponents implements AutoCloseable {
 
         SimulationStatistics statistics = new SimulationStatistics(clock, resources);
         orderProcessor.addListener(OrderLifecycleListener.onCompleted(statistics::record));
-        orderProcessor.addListener(new StockHandling(inventory));
+        orderProcessor.addListener(new StockHandling(inventory, warehouse));
         this.generator = new OrderGenerator(
                 clock, WorkloadProfile.defaults(), catalog, customers::all, orderService::place);
 
@@ -83,10 +91,11 @@ public final class ApplicationComponents implements AutoCloseable {
         ReceptionBuffer receptionBuffer = new ReceptionBuffer(RECEPTION_BUFFER_CAPACITY);
         this.reception = new ReceptionService(resources, clock, receptionBuffer, catalog);
         this.inventoryWorker = new InventoryWorker(
-                receptionBuffer, inventory, clock, InventoryTimes.defaults(), productId -> scheduler.stockChanged());
+                receptionBuffer, inventory, warehouse, clock, InventoryTimes.defaults(),
+                productId -> scheduler.stockChanged());
 
         SimulationSnapshotFactory snapshots = new SimulationSnapshotFactory(clock, resources, scheduler,
-                orderProcessor, generator, statistics, inventory, receptionBuffer, inventoryWorker, reception);
+                orderProcessor, generator, statistics, inventory, receptionBuffer, inventoryWorker, reception, warehouse);
         this.broadcaster = new SnapshotBroadcaster(snapshots::create);
         List<ApiRoutes> routes = List.of(
                 new ClockRoutes(clock),
@@ -96,8 +105,22 @@ public final class ApplicationComponents implements AutoCloseable {
                 new SchedulingRoutes(scheduler),
                 new GeneratorRoutes(generator),
                 new StatsRoutes(statistics),
-                new ReceptionRoutes(reception));
+                new ReceptionRoutes(reception),
+                new WarehouseRoutes(warehouse));
         this.server = new ApiServer(broadcaster, routes);
+    }
+
+    /**
+     * Guarda en el almacén las existencias iniciales (un lote por producto), de modo que lo que dice el
+     * inventario coincida con lo que hay físicamente.
+     */
+    private static void storeInitialStock(Warehouse warehouse, ProductCatalog catalog) {
+        catalog.all().forEach(product -> {
+            StoreResult result = warehouse.store("INIT-" + product.id(), product.id(), INITIAL_UNITS_PER_PRODUCT);
+            if (result.rejected() > 0) {
+                throw new IllegalStateException("The warehouse is too small for the initial stock of " + product.id());
+            }
+        });
     }
 
     /** Arranca el servidor y devuelve el puerto real (útil con el puerto 0 en los tests). */
