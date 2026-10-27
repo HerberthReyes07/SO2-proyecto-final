@@ -19,6 +19,12 @@ java -jar target/redxela.jar                  # http://localhost:7070
 `mvn package` necesita Node en el PATH para construir la interfaz; `mvn package -DskipFrontend` empaqueta sin ella
 (el JAR solo tendrá la API). `mvn test` nunca invoca a Node. Otro puerto: `java -Dredxela.port=8080 -jar target/redxela.jar`.
 
+## Documentación
+- `docs/Manual_Tecnico_REDXela.docx`: manual técnico (infraestructura y decisiones de diseño).
+- `docs/Manual_Usuario_REDXela.docx`: manual de usuario (uso de la interfaz, recetas de demostración y preguntas frecuentes).
+- `docs/diagramas/REDXela-diagramas.drawio`: los 10 diagramas del manual en un solo archivo de draw.io, una pestaña por diagrama. Los `.drawio` sueltos y los `.png` de esa carpeta son las mismas figuras por separado.
+- `docs/PROPUESTA.md`: diseño acordado durante el desarrollo.
+
 ## Pruebas
 ```bash
 cd backend && mvn test
